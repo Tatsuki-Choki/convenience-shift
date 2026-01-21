@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { Button } from '@/components/ui/button';
+import { Header } from '@/components/layout/header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import type { SessionUser } from '@/lib/auth';
@@ -10,42 +10,12 @@ interface DashboardContentProps {
   user: SessionUser;
 }
 
-const roleLabels: Record<string, string> = {
-  owner: 'オーナー',
-  manager: '店長',
-  staff: 'スタッフ',
-};
-
 export function DashboardContent({ user }: DashboardContentProps) {
   const router = useRouter();
 
-  const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    router.push('/');
-  };
-
   return (
     <div className="min-h-screen bg-[#F5F5F7]">
-      {/* ヘッダー */}
-      <header className="bg-white border-b border-[#D2D2D7] px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <h1 className="text-xl font-semibold text-[#1D1D1F]">シフト管理</h1>
-          <div className="flex items-center gap-4">
-            <div className="text-right">
-              <p className="text-sm font-medium text-[#1D1D1F]">{user.name}</p>
-              <p className="text-xs text-[#86868B]">{roleLabels[user.role]}</p>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleLogout}
-              className="border-[#D2D2D7]"
-            >
-              ログアウト
-            </Button>
-          </div>
-        </div>
-      </header>
+      <Header user={user} />
 
       {/* メインコンテンツ */}
       <main className="max-w-7xl mx-auto p-6">
@@ -80,7 +50,10 @@ export function DashboardContent({ user }: DashboardContentProps) {
                 </CardContent>
               </Card>
 
-              <Card className="border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer">
+              <Card
+                className="border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                onClick={() => router.push('/dashboard/staff')}
+              >
                 <CardHeader>
                   <CardTitle className="text-lg text-[#1D1D1F]">スタッフ管理</CardTitle>
                   <CardDescription className="text-[#86868B]">
