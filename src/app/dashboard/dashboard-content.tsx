@@ -36,7 +36,10 @@ export function DashboardContent({ user }: DashboardContentProps) {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {(user.role === 'owner' || user.role === 'manager') && (
             <>
-              <Card className="border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer">
+              <Card
+                className="border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                onClick={() => router.push('/dashboard/shifts')}
+              >
                 <CardHeader>
                   <CardTitle className="text-lg text-[#1D1D1F]">シフト作成</CardTitle>
                   <CardDescription className="text-[#86868B]">

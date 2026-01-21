@@ -23,7 +23,9 @@
       "Bash(npx tsx:*)",
       "Bash(git commit -m \"$\\(cat <<''EOF''\nFix: 環境変数読み込みを修正\n\n- drizzle.config.ts: .env.localから環境変数を読み込むように修正\n- seed.ts: 同様に.env.local対応を追加\n- dotenvパッケージを追加\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
       "Bash(vercel --prod:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ]
   },
   "enableAllProjectMcpServers": true,
