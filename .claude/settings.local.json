@@ -11,7 +11,17 @@
       "Bash(npx shadcn@latest add button card input label select dialog table tabs avatar badge -y)",
       "Bash(gh repo create:*)",
       "Bash(git add:*)",
-      "Bash(git commit -m \"$\\(cat <<''EOF''\nPhase 1: 基盤構築の実装\n\n- Next.js 15 App Router プロジェクトセットアップ\n- Drizzle ORM + Neon Postgres スキーマ定義\n- shadcn/ui コンポーネント導入\n- デモ認証システム実装\n- シードデータ作成スクリプト\n- Apple風デザインのログイン画面・ダッシュボード\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nPhase 1: 基盤構築の実装\n\n- Next.js 15 App Router プロジェクトセットアップ\n- Drizzle ORM + Neon Postgres スキーマ定義\n- shadcn/ui コンポーネント導入\n- デモ認証システム実装\n- シードデータ作成スクリプト\n- Apple風デザインのログイン画面・ダッシュボード\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git push)",
+      "Bash(vercel link:*)",
+      "Bash(vercel integration:*)",
+      "Bash(vercel env:*)",
+      "Bash(brew install:*)",
+      "Bash(npx neonctl:*)",
+      "Bash(printf:*)",
+      "Bash(npx drizzle-kit push)",
+      "Bash(npx tsx:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nFix: 環境変数読み込みを修正\n\n- drizzle.config.ts: .env.localから環境変数を読み込むように修正\n- seed.ts: 同様に.env.local対応を追加\n- dotenvパッケージを追加\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
     ]
   },
   "enableAllProjectMcpServers": true,
