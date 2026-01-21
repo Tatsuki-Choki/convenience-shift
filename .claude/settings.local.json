@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__query-docs",
+      "Bash(gh auth:*)",
+      "Bash(vercel whoami)",
+      "Bash(vercel login)",
+      "Bash(npm install:*)",
+      "Bash(npx shadcn@latest init:*)",
+      "Bash(npx shadcn@latest add button card input label select dialog table tabs avatar badge -y)",
+      "Bash(gh repo create:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nPhase 1: 基盤構築の実装\n\n- Next.js 15 App Router プロジェクトセットアップ\n- Drizzle ORM + Neon Postgres スキーマ定義\n- shadcn/ui コンポーネント導入\n- デモ認証システム実装\n- シードデータ作成スクリプト\n- Apple風デザインのログイン画面・ダッシュボード\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "playwright-test",
+    "supabase"
+  ]
+}
