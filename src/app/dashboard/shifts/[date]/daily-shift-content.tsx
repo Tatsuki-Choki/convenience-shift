@@ -32,6 +32,11 @@ import {
 } from 'lucide-react';
 import type { SessionUser } from '@/lib/auth';
 import { TIME_SLOTS, timeToMinutes, addHoursToTime, DEFAULT_SHIFT } from '@/lib/time-constants';
+import { AutoAssignButton } from '@/components/shifts/auto-assign-button';
+import { AutoAssignPreviewDialog } from '@/components/shifts/auto-assign-preview';
+import { ApiKeySettingsDialog } from '@/components/shifts/api-key-settings';
+import { useGeminiApi } from '@/hooks/use-gemini-api';
+import { proposeShifts, applyProposedShifts, type ShiftProposalResult } from '@/lib/auto-assign/shift-proposer';
 
 interface Store {
   id: number;
@@ -108,6 +113,20 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
   );
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  // 自動割り振り用
+  const {
+    apiKey,
+    isApiKeySet,
+    isValidating,
+    setApiKey,
+    clearApiKey,
+  } = useGeminiApi();
+  const [apiKeyDialogOpen, setApiKeyDialogOpen] = useState(false);
+  const [autoAssignLoading, setAutoAssignLoading] = useState(false);
+  const [autoAssignPreviewOpen, setAutoAssignPreviewOpen] = useState(false);
+  const [autoAssignResult, setAutoAssignResult] = useState<ShiftProposalResult | null>(null);
+  const [isApplyingShifts, setIsApplyingShifts] = useState(false);
 
   // シフト編集用
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -361,6 +380,48 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
     setSelectedStoreId(value);
   }, []);
 
+  // 自動割り振りハンドラ
+  const handleAutoAssign = useCallback(async () => {
+    setAutoAssignLoading(true);
+    try {
+      const result = await proposeShifts(date);
+      setAutoAssignResult(result);
+      setAutoAssignPreviewOpen(true);
+    } catch (error) {
+      console.error('自動割り振りエラー:', error);
+    } finally {
+      setAutoAssignLoading(false);
+    }
+  }, [date]);
+
+  const handleRecalculate = useCallback(async () => {
+    setAutoAssignLoading(true);
+    try {
+      const result = await proposeShifts(date);
+      setAutoAssignResult(result);
+    } catch (error) {
+      console.error('再計算エラー:', error);
+    } finally {
+      setAutoAssignLoading(false);
+    }
+  }, [date]);
+
+  const handleApplyShifts = useCallback(async () => {
+    if (!autoAssignResult || autoAssignResult.proposedShifts.length === 0) return;
+
+    setIsApplyingShifts(true);
+    try {
+      await applyProposedShifts(date, autoAssignResult.proposedShifts);
+      await fetchShifts();
+      setAutoAssignPreviewOpen(false);
+      setAutoAssignResult(null);
+    } catch (error) {
+      console.error('シフト適用エラー:', error);
+    } finally {
+      setIsApplyingShifts(false);
+    }
+  }, [date, autoAssignResult, fetchShifts]);
+
   const editingStaff = useMemo(() =>
     staffList.find((s) => s.id === editingStaffId),
     [staffList, editingStaffId]
@@ -425,20 +486,29 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
             <ChevronLeft className="w-4 h-4 mr-1" />
             前日
           </Button>
-          <h2 className="text-xl font-semibold text-[#1D1D1F]">
-            {format(currentDate, 'yyyy年M月d日', { locale: ja })}
-            <span
-              className={`ml-2 ${
-                dayOfWeek === 0
-                  ? 'text-[#FF3B30]'
-                  : dayOfWeek === 6
-                  ? 'text-[#007AFF]'
-                  : 'text-[#86868B]'
-              }`}
-            >
-              ({dayOfWeekLabels[dayOfWeek]})
-            </span>
-          </h2>
+          <div className="flex items-center gap-4">
+            <h2 className="text-xl font-semibold text-[#1D1D1F]">
+              {format(currentDate, 'yyyy年M月d日', { locale: ja })}
+              <span
+                className={`ml-2 ${
+                  dayOfWeek === 0
+                    ? 'text-[#FF3B30]'
+                    : dayOfWeek === 6
+                    ? 'text-[#007AFF]'
+                    : 'text-[#86868B]'
+                }`}
+              >
+                ({dayOfWeekLabels[dayOfWeek]})
+              </span>
+            </h2>
+            <AutoAssignButton
+              onAutoAssign={handleAutoAssign}
+              onOpenSettings={() => setApiKeyDialogOpen(true)}
+              isLoading={autoAssignLoading}
+              isApiKeySet={isApiKeySet}
+              disabled={loading}
+            />
+          </div>
           <Button
             variant="outline"
             onClick={handleNextDay}
@@ -677,6 +747,31 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* APIキー設定ダイアログ */}
+      <ApiKeySettingsDialog
+        open={apiKeyDialogOpen}
+        onOpenChange={setApiKeyDialogOpen}
+        currentApiKey={apiKey}
+        isValidating={isValidating}
+        onSave={setApiKey}
+        onClear={clearApiKey}
+      />
+
+      {/* 自動割り振りプレビューダイアログ */}
+      <AutoAssignPreviewDialog
+        open={autoAssignPreviewOpen}
+        onOpenChange={setAutoAssignPreviewOpen}
+        date={format(currentDate, 'yyyy年M月d日', { locale: ja })}
+        beforeCoverage={autoAssignResult?.beforeCoverage ?? 0}
+        afterCoverage={autoAssignResult?.afterCoverage ?? 0}
+        proposedShifts={autoAssignResult?.proposedShifts ?? []}
+        unfilledSlots={autoAssignResult?.unfilledSlots ?? []}
+        isLoading={autoAssignLoading}
+        isApplying={isApplyingShifts}
+        onRecalculate={handleRecalculate}
+        onApply={handleApplyShifts}
+      />
     </DashboardLayout>
   );
 }
