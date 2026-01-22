@@ -1,9 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { Header } from '@/components/layout/header';
+import { useState, useEffect, useCallback, useMemo, memo } from 'react';
+import { DashboardLayout, PageSection } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
   Select,
@@ -12,7 +11,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Clock,
+  Copy,
+  Trash2,
+  Save,
+  AlertCircle,
+  CheckCircle,
+  Users,
+} from 'lucide-react';
 import type { SessionUser } from '@/lib/auth';
 
 interface Store {
@@ -48,26 +56,194 @@ const generateTimeSlots = (): string[] => {
 
 const timeSlots = generateTimeSlots();
 
+// ローディングスケルトン
+const LoadingSkeleton = memo(function LoadingSkeleton() {
+  return (
+    <div className="space-y-6 animate-pulse">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
+        {[...Array(12)].map((_, i) => (
+          <div key={i} className="h-20 bg-[#E5E5EA] rounded-xl" />
+        ))}
+      </div>
+    </div>
+  );
+});
+
+// 時間スロットカード
+const TimeSlotCard = memo(function TimeSlotCard({
+  timeSlot,
+  count,
+  onIncrement,
+  onDecrement,
+}: {
+  timeSlot: string;
+  count: number;
+  onIncrement: () => void;
+  onDecrement: () => void;
+}) {
+  const getBgColor = (count: number): string => {
+    if (count === 0) return 'bg-[#F5F5F7]';
+    if (count === 1) return 'bg-[#007AFF]/10';
+    if (count === 2) return 'bg-[#007AFF]/20';
+    if (count === 3) return 'bg-[#007AFF]/30';
+    return 'bg-[#007AFF]/40';
+  };
+
+  return (
+    <div
+      className={`p-3 rounded-xl border border-[#E5E5EA] ${getBgColor(count)} transition-colors duration-200`}
+    >
+      <div className="text-sm font-medium text-[#1D1D1F] mb-2 flex items-center gap-1.5">
+        <Clock className="w-3.5 h-3.5 text-[#86868B]" />
+        {timeSlot}
+      </div>
+      <div className="flex items-center justify-between">
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 w-8 p-0 rounded-lg border-[#E5E5EA] hover:bg-[#F5F5F7]"
+          onClick={onDecrement}
+        >
+          -
+        </Button>
+        <span className="text-lg font-semibold text-[#1D1D1F] w-8 text-center">
+          {count}
+        </span>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 w-8 p-0 rounded-lg border-[#E5E5EA] hover:bg-[#F5F5F7]"
+          onClick={onIncrement}
+        >
+          +
+        </Button>
+      </div>
+    </div>
+  );
+});
+
+// 週間サマリーカード
+const WeeklySummaryCard = memo(function WeeklySummaryCard({
+  label,
+  index,
+  totalSlots,
+  totalStaff,
+}: {
+  label: string;
+  index: number;
+  totalSlots: number;
+  totalStaff: number;
+}) {
+  return (
+    <div
+      className={`p-3 rounded-xl border transition-all duration-200 ${
+        totalSlots > 0
+          ? 'border-[#007AFF]/30 bg-[#007AFF]/5'
+          : 'border-[#E5E5EA] bg-[#F5F5F7]'
+      }`}
+    >
+      <div
+        className={`text-sm font-semibold mb-2 ${
+          index === 0
+            ? 'text-[#FF3B30]'
+            : index === 6
+            ? 'text-[#007AFF]'
+            : 'text-[#1D1D1F]'
+        }`}
+      >
+        {label}
+      </div>
+      <div className="text-xs text-[#86868B]">
+        {totalSlots > 0 ? (
+          <>
+            <div className="flex items-center gap-1">
+              <Clock className="w-3 h-3" />
+              {totalSlots}枠
+            </div>
+            <div className="flex items-center gap-1 mt-1">
+              <Users className="w-3 h-3" />
+              計{totalStaff}人
+            </div>
+          </>
+        ) : (
+          <div className="text-[#D2D2D7]">未設定</div>
+        )}
+      </div>
+    </div>
+  );
+});
+
+// 週間サマリーコンポーネント
+const WeeklySummary = memo(function WeeklySummary({ storeId }: { storeId: string }) {
+  const [weeklyData, setWeeklyData] = useState<Map<number, ShiftRequirement[]>>(new Map());
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (storeId) {
+      fetchWeeklyData();
+    }
+  }, [storeId]);
+
+  const fetchWeeklyData = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/shift-requirements?storeId=${storeId}`);
+      if (res.ok) {
+        const data: ShiftRequirement[] = await res.json();
+        const grouped = new Map<number, ShiftRequirement[]>();
+        for (let i = 0; i < 7; i++) {
+          grouped.set(i, data.filter((r) => r.dayOfWeek === i));
+        }
+        setWeeklyData(grouped);
+      }
+    } catch (error) {
+      console.error('週間データ取得エラー:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="grid grid-cols-7 gap-2">
+        {[...Array(7)].map((_, i) => (
+          <div key={i} className="h-20 bg-[#E5E5EA] rounded-xl animate-pulse" />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-7 gap-2">
+      {dayOfWeekShortLabels.map((label, index) => {
+        const dayRequirements = weeklyData.get(index) || [];
+        const totalSlots = dayRequirements.length;
+        const totalStaff = dayRequirements.reduce((acc, r) => acc + r.requiredCount, 0);
+
+        return (
+          <WeeklySummaryCard
+            key={index}
+            label={label}
+            index={index}
+            totalSlots={totalSlots}
+            totalStaff={totalStaff}
+          />
+        );
+      })}
+    </div>
+  );
+});
+
 export function RequirementsContent({ user }: RequirementsContentProps) {
   const [stores, setStores] = useState<Store[]>([]);
   const [selectedStoreId, setSelectedStoreId] = useState<string>('');
-  const [selectedDayOfWeek, setSelectedDayOfWeek] = useState<number>(1); // デフォルトは月曜日
+  const [selectedDayOfWeek, setSelectedDayOfWeek] = useState<number>(1);
   const [requirements, setRequirements] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
 
-  useEffect(() => {
-    fetchStores();
-  }, []);
-
-  useEffect(() => {
-    if (selectedStoreId) {
-      fetchRequirements();
-    }
-  }, [selectedStoreId, selectedDayOfWeek]);
-
-  const fetchStores = async () => {
+  const fetchStores = useCallback(async () => {
     try {
       const res = await fetch('/api/stores');
       if (res.ok) {
@@ -83,9 +259,10 @@ export function RequirementsContent({ user }: RequirementsContentProps) {
     } catch (error) {
       console.error('店舗取得エラー:', error);
     }
-  };
+  }, [user.storeId]);
 
-  const fetchRequirements = async () => {
+  const fetchRequirements = useCallback(async () => {
+    if (!selectedStoreId) return;
     setLoading(true);
     try {
       const res = await fetch(
@@ -105,20 +282,32 @@ export function RequirementsContent({ user }: RequirementsContentProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedStoreId, selectedDayOfWeek]);
 
-  const handleRequirementChange = (timeSlot: string, count: number) => {
-    const newRequirements = new Map(requirements);
-    if (count <= 0) {
-      newRequirements.delete(timeSlot);
-    } else {
-      newRequirements.set(timeSlot, count);
+  useEffect(() => {
+    fetchStores();
+  }, [fetchStores]);
+
+  useEffect(() => {
+    if (selectedStoreId) {
+      fetchRequirements();
     }
-    setRequirements(newRequirements);
-    setHasChanges(true);
-  };
+  }, [selectedStoreId, selectedDayOfWeek, fetchRequirements]);
 
-  const handleSave = async () => {
+  const handleRequirementChange = useCallback((timeSlot: string, count: number) => {
+    setRequirements((prev) => {
+      const newRequirements = new Map(prev);
+      if (count <= 0) {
+        newRequirements.delete(timeSlot);
+      } else {
+        newRequirements.set(timeSlot, count);
+      }
+      return newRequirements;
+    });
+    setHasChanges(true);
+  }, []);
+
+  const handleSave = useCallback(async () => {
     setSaving(true);
     try {
       const requirementsArray = Array.from(requirements.entries())
@@ -151,9 +340,9 @@ export function RequirementsContent({ user }: RequirementsContentProps) {
     } finally {
       setSaving(false);
     }
-  };
+  }, [requirements, selectedStoreId, selectedDayOfWeek]);
 
-  const handleCopyToOtherDays = async (targetDays: number[]) => {
+  const handleCopyToOtherDays = useCallback(async (targetDays: number[]) => {
     if (!confirm(`選択した曜日に現在の設定をコピーしますか？\n対象: ${targetDays.map(d => dayOfWeekLabels[d]).join(', ')}`)) {
       return;
     }
@@ -186,289 +375,213 @@ export function RequirementsContent({ user }: RequirementsContentProps) {
     } finally {
       setSaving(false);
     }
-  };
+  }, [requirements, selectedStoreId]);
 
-  const getRequirementColor = (count: number): string => {
-    if (count === 0) return 'bg-gray-100';
-    if (count === 1) return 'bg-blue-100';
-    if (count === 2) return 'bg-blue-200';
-    if (count === 3) return 'bg-blue-300';
-    return 'bg-blue-400';
-  };
+  const handleClear = useCallback(() => {
+    if (confirm('すべての時間帯をクリアしますか？')) {
+      setRequirements(new Map());
+      setHasChanges(true);
+    }
+  }, []);
+
+  const handleStoreChange = useCallback((value: string) => {
+    setSelectedStoreId(value);
+  }, []);
+
+  const handleDayChange = useCallback((value: string) => {
+    setSelectedDayOfWeek(parseInt(value));
+  }, []);
+
+  const storeSelector = useMemo(() => {
+    if (user.role !== 'owner') return null;
+    return (
+      <Select value={selectedStoreId} onValueChange={handleStoreChange}>
+        <SelectTrigger className="w-[180px] border-[#E5E5EA] bg-white">
+          <SelectValue placeholder="店舗を選択" />
+        </SelectTrigger>
+        <SelectContent>
+          {stores.map((store) => (
+            <SelectItem key={store.id} value={store.id.toString()}>
+              {store.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    );
+  }, [user.role, selectedStoreId, stores, handleStoreChange]);
 
   return (
-    <div className="min-h-screen bg-[#F5F5F7]">
-      <Header user={user} />
-
-      <main className="max-w-7xl mx-auto p-6">
-        <div className="flex items-center justify-between mb-6">
+    <DashboardLayout
+      user={user}
+      title="必要人数設定"
+      description="曜日・時間帯ごとに必要なスタッフ人数を設定"
+      actions={storeSelector}
+    >
+      {/* 時間帯別必要人数 */}
+      <PageSection>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
           <div>
-            <h2 className="text-2xl font-semibold text-[#1D1D1F]">必要人数設定</h2>
-            <p className="text-[#86868B]">
-              曜日・時間帯ごとに必要なスタッフ人数を設定します
+            <h2 className="text-lg font-semibold text-[#1D1D1F]">時間帯別必要人数</h2>
+            <p className="text-sm text-[#86868B]">
+              各時間帯に必要なスタッフ人数を設定してください
             </p>
           </div>
-          {user.role === 'owner' && (
-            <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="店舗を選択" />
-              </SelectTrigger>
-              <SelectContent>
-                {stores.map((store) => (
-                  <SelectItem key={store.id} value={store.id.toString()}>
-                    {store.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
+          <div className="flex items-center gap-2">
+            {hasChanges && (
+              <Badge className="bg-[#FF9500]/10 text-[#FF9500] border-0">
+                <AlertCircle className="w-3 h-3 mr-1" />
+                未保存
+              </Badge>
+            )}
+            <Button
+              onClick={handleSave}
+              disabled={!hasChanges || saving}
+              className="bg-[#007AFF] hover:bg-[#0056b3] text-white rounded-xl"
+            >
+              {saving ? (
+                <>保存中...</>
+              ) : (
+                <>
+                  <Save className="w-4 h-4 mr-1.5" />
+                  保存
+                </>
+              )}
+            </Button>
+          </div>
         </div>
 
-        <Card className="border-0 shadow-sm">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-lg text-[#1D1D1F]">時間帯別必要人数</CardTitle>
-                <CardDescription>
-                  各時間帯に必要なスタッフ人数を設定してください
-                </CardDescription>
-              </div>
-              <div className="flex items-center gap-2">
-                {hasChanges && (
-                  <Badge className="bg-yellow-100 text-yellow-800">未保存の変更あり</Badge>
-                )}
+        {/* 曜日タブ */}
+        <Tabs
+          value={selectedDayOfWeek.toString()}
+          onValueChange={handleDayChange}
+          className="mb-6"
+        >
+          <TabsList className="grid grid-cols-7 w-full bg-[#F5F5F7] p-1 rounded-xl">
+            {dayOfWeekShortLabels.map((label, index) => (
+              <TabsTrigger
+                key={index}
+                value={index.toString()}
+                className={`rounded-lg text-sm font-medium transition-all data-[state=active]:bg-white data-[state=active]:shadow-sm ${
+                  index === 0
+                    ? 'data-[state=active]:text-[#FF3B30] text-[#FF3B30]/60'
+                    : index === 6
+                    ? 'data-[state=active]:text-[#007AFF] text-[#007AFF]/60'
+                    : 'data-[state=active]:text-[#1D1D1F] text-[#86868B]'
+                }`}
+              >
+                {label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+
+        {loading ? (
+          <LoadingSkeleton />
+        ) : (
+          <>
+            {/* 時間帯グリッド */}
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2 mb-6">
+              {timeSlots.map((timeSlot) => {
+                const count = requirements.get(timeSlot) || 0;
+                return (
+                  <TimeSlotCard
+                    key={timeSlot}
+                    timeSlot={timeSlot}
+                    count={count}
+                    onIncrement={() => handleRequirementChange(timeSlot, count + 1)}
+                    onDecrement={() => handleRequirementChange(timeSlot, Math.max(0, count - 1))}
+                  />
+                );
+              })}
+            </div>
+
+            {/* 一括操作 */}
+            <div className="border-t border-[#E5E5EA] pt-4">
+              <h4 className="text-sm font-medium text-[#1D1D1F] mb-3 flex items-center gap-2">
+                <Copy className="w-4 h-4 text-[#86868B]" />
+                一括操作
+              </h4>
+              <div className="flex flex-wrap gap-2">
                 <Button
-                  onClick={handleSave}
-                  disabled={!hasChanges || saving}
-                  className="bg-[#007AFF] hover:bg-[#0056b3] text-white"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleCopyToOtherDays([1, 2, 3, 4, 5])}
+                  disabled={saving}
+                  className="rounded-lg border-[#E5E5EA] hover:bg-[#F5F5F7]"
                 >
-                  {saving ? '保存中...' : '保存'}
+                  平日（月〜金）にコピー
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleCopyToOtherDays([0, 6])}
+                  disabled={saving}
+                  className="rounded-lg border-[#E5E5EA] hover:bg-[#F5F5F7]"
+                >
+                  土日にコピー
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleCopyToOtherDays([0, 1, 2, 3, 4, 5, 6].filter(d => d !== selectedDayOfWeek))}
+                  disabled={saving}
+                  className="rounded-lg border-[#E5E5EA] hover:bg-[#F5F5F7]"
+                >
+                  全曜日にコピー
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleClear}
+                  className="rounded-lg border-[#E5E5EA] text-[#FF3B30] hover:bg-[#FF3B30]/5 hover:text-[#FF3B30]"
+                >
+                  <Trash2 className="w-4 h-4 mr-1" />
+                  クリア
                 </Button>
               </div>
             </div>
-          </CardHeader>
-          <CardContent>
-            {/* 曜日タブ */}
-            <Tabs
-              value={selectedDayOfWeek.toString()}
-              onValueChange={(v) => setSelectedDayOfWeek(parseInt(v))}
-              className="mb-6"
-            >
-              <TabsList className="grid grid-cols-7 w-full">
-                {dayOfWeekShortLabels.map((label, index) => (
-                  <TabsTrigger
-                    key={index}
-                    value={index.toString()}
-                    className={`${
-                      index === 0 ? 'text-red-500' : index === 6 ? 'text-blue-500' : ''
-                    }`}
-                  >
-                    {label}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </Tabs>
 
-            {loading ? (
-              <div className="flex items-center justify-center py-12">
-                <p className="text-[#86868B]">読み込み中...</p>
+            {/* 凡例 */}
+            <div className="border-t border-[#E5E5EA] pt-4 mt-4">
+              <h4 className="text-sm font-medium text-[#1D1D1F] mb-3">凡例</h4>
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 bg-[#F5F5F7] border border-[#E5E5EA] rounded-lg" />
+                  <span className="text-sm text-[#86868B]">0人</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 bg-[#007AFF]/10 border border-[#E5E5EA] rounded-lg" />
+                  <span className="text-sm text-[#86868B]">1人</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 bg-[#007AFF]/20 border border-[#E5E5EA] rounded-lg" />
+                  <span className="text-sm text-[#86868B]">2人</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 bg-[#007AFF]/30 border border-[#E5E5EA] rounded-lg" />
+                  <span className="text-sm text-[#86868B]">3人</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 bg-[#007AFF]/40 border border-[#E5E5EA] rounded-lg" />
+                  <span className="text-sm text-[#86868B]">4人以上</span>
+                </div>
               </div>
-            ) : (
-              <>
-                {/* 時間帯グリッド */}
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2 mb-6">
-                  {timeSlots.map((timeSlot) => {
-                    const count = requirements.get(timeSlot) || 0;
-                    return (
-                      <div
-                        key={timeSlot}
-                        className={`p-3 rounded-lg border border-[#D2D2D7] ${getRequirementColor(count)}`}
-                      >
-                        <div className="text-sm font-medium text-[#1D1D1F] mb-2">
-                          {timeSlot}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 w-8 p-0"
-                            onClick={() => handleRequirementChange(timeSlot, Math.max(0, count - 1))}
-                          >
-                            -
-                          </Button>
-                          <span className="text-lg font-semibold w-8 text-center">{count}</span>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 w-8 p-0"
-                            onClick={() => handleRequirementChange(timeSlot, count + 1)}
-                          >
-                            +
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* 一括操作 */}
-                <div className="border-t border-[#D2D2D7] pt-4">
-                  <h4 className="text-sm font-medium text-[#1D1D1F] mb-3">一括操作</h4>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleCopyToOtherDays([1, 2, 3, 4, 5])}
-                      disabled={saving}
-                    >
-                      平日（月〜金）にコピー
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleCopyToOtherDays([0, 6])}
-                      disabled={saving}
-                    >
-                      土日にコピー
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleCopyToOtherDays([0, 1, 2, 3, 4, 5, 6].filter(d => d !== selectedDayOfWeek))}
-                      disabled={saving}
-                    >
-                      全曜日にコピー
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        if (confirm('すべての時間帯をクリアしますか？')) {
-                          setRequirements(new Map());
-                          setHasChanges(true);
-                        }
-                      }}
-                      className="text-red-500 hover:text-red-700"
-                    >
-                      クリア
-                    </Button>
-                  </div>
-                </div>
-
-                {/* 凡例 */}
-                <div className="border-t border-[#D2D2D7] pt-4 mt-4">
-                  <h4 className="text-sm font-medium text-[#1D1D1F] mb-3">凡例</h4>
-                  <div className="flex flex-wrap items-center gap-4">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 bg-gray-100 border border-[#D2D2D7] rounded" />
-                      <span className="text-sm text-[#86868B]">0人</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 bg-blue-100 border border-[#D2D2D7] rounded" />
-                      <span className="text-sm text-[#86868B]">1人</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 bg-blue-200 border border-[#D2D2D7] rounded" />
-                      <span className="text-sm text-[#86868B]">2人</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 bg-blue-300 border border-[#D2D2D7] rounded" />
-                      <span className="text-sm text-[#86868B]">3人</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 bg-blue-400 border border-[#D2D2D7] rounded" />
-                      <span className="text-sm text-[#86868B]">4人以上</span>
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* 週間サマリー */}
-        <Card className="mt-6 border-0 shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-lg text-[#1D1D1F]">週間サマリー</CardTitle>
-            <CardDescription>各曜日の設定状況を確認できます</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <WeeklySummary storeId={selectedStoreId} />
-          </CardContent>
-        </Card>
-      </main>
-    </div>
-  );
-}
-
-// 週間サマリーコンポーネント
-function WeeklySummary({ storeId }: { storeId: string }) {
-  const [weeklyData, setWeeklyData] = useState<Map<number, ShiftRequirement[]>>(new Map());
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (storeId) {
-      fetchWeeklyData();
-    }
-  }, [storeId]);
-
-  const fetchWeeklyData = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/shift-requirements?storeId=${storeId}`);
-      if (res.ok) {
-        const data: ShiftRequirement[] = await res.json();
-        const grouped = new Map<number, ShiftRequirement[]>();
-        for (let i = 0; i < 7; i++) {
-          grouped.set(i, data.filter((r) => r.dayOfWeek === i));
-        }
-        setWeeklyData(grouped);
-      }
-    } catch (error) {
-      console.error('週間データ取得エラー:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (loading) {
-    return <p className="text-[#86868B]">読み込み中...</p>;
-  }
-
-  return (
-    <div className="grid grid-cols-7 gap-2">
-      {dayOfWeekShortLabels.map((label, index) => {
-        const dayRequirements = weeklyData.get(index) || [];
-        const totalSlots = dayRequirements.length;
-        const totalStaff = dayRequirements.reduce((acc, r) => acc + r.requiredCount, 0);
-
-        return (
-          <div
-            key={index}
-            className={`p-3 rounded-lg border border-[#D2D2D7] text-center ${
-              totalSlots > 0 ? 'bg-blue-50' : 'bg-gray-50'
-            }`}
-          >
-            <div
-              className={`text-sm font-medium mb-1 ${
-                index === 0 ? 'text-red-500' : index === 6 ? 'text-blue-500' : 'text-[#1D1D1F]'
-              }`}
-            >
-              {label}
             </div>
-            <div className="text-xs text-[#86868B]">
-              {totalSlots > 0 ? (
-                <>
-                  <div>{totalSlots}枠</div>
-                  <div>計{totalStaff}人</div>
-                </>
-              ) : (
-                <div>未設定</div>
-              )}
-            </div>
-          </div>
-        );
-      })}
-    </div>
+          </>
+        )}
+      </PageSection>
+
+      {/* 週間サマリー */}
+      <PageSection className="mt-6">
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold text-[#1D1D1F] flex items-center gap-2">
+            <CheckCircle className="w-5 h-5 text-[#34C759]" />
+            週間サマリー
+          </h2>
+          <p className="text-sm text-[#86868B]">各曜日の設定状況を確認できます</p>
+        </div>
+        <WeeklySummary storeId={selectedStoreId} />
+      </PageSection>
+    </DashboardLayout>
   );
 }

@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, memo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Header } from '@/components/layout/header';
+import { DashboardLayout, PageSection, PageGrid } from '@/components/layout/dashboard-layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -13,9 +13,18 @@ import {
   eachDayOfInterval,
   getDay,
   isToday,
-  parseISO,
 } from 'date-fns';
 import { ja } from 'date-fns/locale';
+import {
+  Calendar,
+  Users,
+  ClipboardList,
+  CalendarDays,
+  CalendarOff,
+  TrendingUp,
+  Clock,
+  ArrowRight,
+} from 'lucide-react';
 import type { SessionUser } from '@/lib/auth';
 
 interface DashboardContentProps {
@@ -43,6 +52,136 @@ interface TimeOffRequest {
 
 const dayOfWeekLabels = ['日', '月', '火', '水', '木', '金', '土'];
 
+const QuickActionCard = memo(function QuickActionCard({
+  title,
+  description,
+  icon: Icon,
+  href,
+  badge,
+  badgeVariant = 'default',
+}: {
+  title: string;
+  description: string;
+  icon: React.ElementType;
+  href: string;
+  badge?: string;
+  badgeVariant?: 'default' | 'secondary';
+}) {
+  const router = useRouter();
+
+  return (
+    <Card
+      className="group border-0 shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer bg-white hover:bg-[#FAFAFA] overflow-hidden"
+      onClick={() => router.push(href)}
+    >
+      <CardHeader className="pb-2">
+        <div className="flex items-start justify-between">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#007AFF]/10 to-[#5856D6]/10 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-300">
+            <Icon className="w-6 h-6 text-[#007AFF]" />
+          </div>
+          {badge && (
+            <Badge
+              variant={badgeVariant === 'default' ? 'default' : 'secondary'}
+              className={badgeVariant === 'default' ? 'bg-[#007AFF] text-white text-xs' : 'bg-[#F5F5F7] text-[#86868B] text-xs'}
+            >
+              {badge}
+            </Badge>
+          )}
+        </div>
+        <CardTitle className="text-base font-semibold text-[#1D1D1F] group-hover:text-[#007AFF] transition-colors">
+          {title}
+        </CardTitle>
+        <CardDescription className="text-sm text-[#86868B]">
+          {description}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <div className="flex items-center text-[#007AFF] text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+          開く
+          <ArrowRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" />
+        </div>
+      </CardContent>
+    </Card>
+  );
+});
+
+const WeekDayCell = memo(function WeekDayCell({
+  day,
+  shift,
+  timeOff,
+}: {
+  day: Date;
+  shift?: Shift;
+  timeOff?: TimeOffRequest;
+}) {
+  const dayOfWeek = getDay(day);
+  const isTodayDate = isToday(day);
+
+  return (
+    <div
+      className={`p-2 sm:p-3 rounded-xl border transition-all duration-200 ${
+        isTodayDate
+          ? 'border-[#007AFF] bg-[#007AFF]/5 shadow-sm'
+          : 'border-[#E5E5EA] bg-white hover:border-[#D2D2D7]'
+      }`}
+    >
+      <div className="text-center mb-2">
+        <span
+          className={`text-xs font-medium ${
+            dayOfWeek === 0
+              ? 'text-[#FF3B30]'
+              : dayOfWeek === 6
+              ? 'text-[#007AFF]'
+              : 'text-[#86868B]'
+          }`}
+        >
+          {dayOfWeekLabels[dayOfWeek]}
+        </span>
+        <p
+          className={`text-lg font-semibold ${
+            isTodayDate ? 'text-[#007AFF]' : 'text-[#1D1D1F]'
+          }`}
+        >
+          {format(day, 'd')}
+        </p>
+      </div>
+
+      {shift ? (
+        <div className="bg-gradient-to-br from-[#007AFF] to-[#5856D6] text-white rounded-lg p-2 text-center">
+          <p className="text-xs font-medium">{shift.startTime.slice(0, 5)}</p>
+          <p className="text-[10px] opacity-70">〜</p>
+          <p className="text-xs font-medium">{shift.endTime.slice(0, 5)}</p>
+          {shift.isHelpFromOtherStore && (
+            <Badge className="mt-1 bg-[#FF9500] text-white text-[10px] px-1.5">
+              ヘルプ
+            </Badge>
+          )}
+        </div>
+      ) : timeOff ? (
+        <div
+          className={`rounded-lg p-2 text-center text-xs font-medium ${
+            timeOff.status === 'approved'
+              ? 'bg-[#34C759]/10 text-[#34C759]'
+              : timeOff.status === 'pending'
+              ? 'bg-[#FF9500]/10 text-[#FF9500]'
+              : 'bg-[#FF3B30]/10 text-[#FF3B30]'
+          }`}
+        >
+          {timeOff.status === 'approved'
+            ? '休み'
+            : timeOff.status === 'pending'
+            ? '申請中'
+            : '却下'}
+        </div>
+      ) : (
+        <div className="h-16 flex items-center justify-center">
+          <span className="text-sm text-[#D2D2D7]">—</span>
+        </div>
+      )}
+    </div>
+  );
+});
+
 export function DashboardContent({ user }: DashboardContentProps) {
   const router = useRouter();
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -51,7 +190,6 @@ export function DashboardContent({ user }: DashboardContentProps) {
 
   const isAdmin = user.role === 'owner' || user.role === 'manager';
 
-  // 今週の日付範囲を計算
   const weekDays = useMemo(() => {
     const now = new Date();
     const start = startOfWeek(now, { weekStartsOn: 0 });
@@ -59,17 +197,11 @@ export function DashboardContent({ user }: DashboardContentProps) {
     return eachDayOfInterval({ start, end });
   }, []);
 
-  useEffect(() => {
-    fetchWeeklyData();
-  }, []);
-
-  const fetchWeeklyData = async () => {
+  const fetchWeeklyData = useCallback(async () => {
     setLoading(true);
     try {
       const startDate = format(weekDays[0], 'yyyy-MM-dd');
       const endDate = format(weekDays[6], 'yyyy-MM-dd');
-
-      // スタッフの場合はマイシフトAPI、管理者の場合は店舗シフトAPIを使用
       const res = await fetch(`/api/my-shifts?startDate=${startDate}&endDate=${endDate}`);
       if (res.ok) {
         const data = await res.json();
@@ -81,21 +213,28 @@ export function DashboardContent({ user }: DashboardContentProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [weekDays]);
 
-  // 特定の日付のシフトを取得
-  const getShiftForDate = (date: Date): Shift | undefined => {
-    const dateStr = format(date, 'yyyy-MM-dd');
-    return shifts.find((s) => s.date === dateStr);
-  };
+  useEffect(() => {
+    fetchWeeklyData();
+  }, [fetchWeeklyData]);
 
-  // 特定の日付の休み希望を取得
-  const getTimeOffForDate = (date: Date): TimeOffRequest | undefined => {
-    const dateStr = format(date, 'yyyy-MM-dd');
-    return timeOffRequests.find((r) => r.date === dateStr);
-  };
+  const getShiftForDate = useCallback(
+    (date: Date): Shift | undefined => {
+      const dateStr = format(date, 'yyyy-MM-dd');
+      return shifts.find((s) => s.date === dateStr);
+    },
+    [shifts]
+  );
 
-  // 今週の勤務統計
+  const getTimeOffForDate = useCallback(
+    (date: Date): TimeOffRequest | undefined => {
+      const dateStr = format(date, 'yyyy-MM-dd');
+      return timeOffRequests.find((r) => r.date === dateStr);
+    },
+    [timeOffRequests]
+  );
+
   const weeklyStats = useMemo(() => {
     const shiftCount = shifts.length;
     let totalMinutes = 0;
@@ -103,7 +242,7 @@ export function DashboardContent({ user }: DashboardContentProps) {
     shifts.forEach((shift) => {
       const [startHour, startMin] = shift.startTime.split(':').map(Number);
       const [endHour, endMin] = shift.endTime.split(':').map(Number);
-      totalMinutes += (endHour * 60 + endMin) - (startHour * 60 + startMin);
+      totalMinutes += endHour * 60 + endMin - (startHour * 60 + startMin);
     });
 
     const hours = Math.floor(totalMinutes / 60);
@@ -112,254 +251,183 @@ export function DashboardContent({ user }: DashboardContentProps) {
     return {
       shiftCount,
       totalTime: `${hours}時間${mins > 0 ? `${mins}分` : ''}`,
+      totalMinutes,
     };
   }, [shifts]);
 
   return (
-    <div className="min-h-screen bg-[#F5F5F7]">
-      <Header user={user} />
+    <DashboardLayout
+      user={user}
+      title={`おかえりなさい、${user.name}さん`}
+      description={
+        user.role === 'owner'
+          ? '全店舗のシフト管理ダッシュボード'
+          : user.role === 'manager'
+          ? '担当店舗のシフト管理ダッシュボード'
+          : '自分のシフトと予定を確認'
+      }
+    >
+      {/* 統計カード */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <PageSection className="!p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#007AFF]/10 flex items-center justify-center">
+              <TrendingUp className="w-5 h-5 text-[#007AFF]" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-[#1D1D1F]">{weeklyStats.shiftCount}</p>
+              <p className="text-xs text-[#86868B]">今週のシフト</p>
+            </div>
+          </div>
+        </PageSection>
 
-      {/* メインコンテンツ */}
-      <main className="max-w-7xl mx-auto p-6">
-        <div className="mb-8">
-          <h2 className="text-2xl font-semibold text-[#1D1D1F] mb-2">
-            ようこそ、{user.name}さん
-          </h2>
-          <p className="text-[#86868B]">
-            {user.role === 'owner'
-              ? '全店舗のシフト管理が可能です'
-              : user.role === 'manager'
-              ? '担当店舗のシフト管理が可能です'
-              : '自分のシフトと休み希望の確認ができます'}
-          </p>
-        </div>
+        <PageSection className="!p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#34C759]/10 flex items-center justify-center">
+              <Clock className="w-5 h-5 text-[#34C759]" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-[#1D1D1F]">{weeklyStats.totalTime || '0時間'}</p>
+              <p className="text-xs text-[#86868B]">予定勤務時間</p>
+            </div>
+          </div>
+        </PageSection>
 
-        {/* クイックアクセス */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {isAdmin && (
-            <>
-              <Card
-                className="border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-                onClick={() => router.push('/dashboard/shifts')}
-              >
-                <CardHeader>
-                  <CardTitle className="text-lg text-[#1D1D1F]">シフト作成</CardTitle>
-                  <CardDescription className="text-[#86868B]">
-                    月別サマリー・日別ガントチャート
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Badge variant="secondary" className="bg-[#007AFF] text-white">
-                    管理者機能
-                  </Badge>
-                </CardContent>
-              </Card>
+        <PageSection className="!p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#FF9500]/10 flex items-center justify-center">
+              <CalendarOff className="w-5 h-5 text-[#FF9500]" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-[#1D1D1F]">
+                {timeOffRequests.filter((r) => r.status === 'pending').length}
+              </p>
+              <p className="text-xs text-[#86868B]">申請中</p>
+            </div>
+          </div>
+        </PageSection>
 
-              <Card
-                className="border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-                onClick={() => router.push('/dashboard/staff')}
-              >
-                <CardHeader>
-                  <CardTitle className="text-lg text-[#1D1D1F]">スタッフ管理</CardTitle>
-                  <CardDescription className="text-[#86868B]">
-                    スタッフ情報・勤務可能時間の管理
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Badge variant="secondary" className="bg-[#007AFF] text-white">
-                    管理者機能
-                  </Badge>
-                </CardContent>
-              </Card>
+        <PageSection className="!p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#5856D6]/10 flex items-center justify-center">
+              <CalendarDays className="w-5 h-5 text-[#5856D6]" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-[#1D1D1F]">
+                {timeOffRequests.filter((r) => r.status === 'approved').length}
+              </p>
+              <p className="text-xs text-[#86868B]">承認済み休み</p>
+            </div>
+          </div>
+        </PageSection>
+      </div>
 
-              <Card
-                className="border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-                onClick={() => router.push('/dashboard/requirements')}
-              >
-                <CardHeader>
-                  <CardTitle className="text-lg text-[#1D1D1F]">必要人数設定</CardTitle>
-                  <CardDescription className="text-[#86868B]">
-                    時間帯別の必要人数を設定
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Badge variant="secondary" className="bg-[#007AFF] text-white">
-                    管理者機能
-                  </Badge>
-                </CardContent>
-              </Card>
-            </>
-          )}
+      {/* クイックアクション */}
+      <h2 className="text-lg font-semibold text-[#1D1D1F] mb-4">クイックアクション</h2>
+      <PageGrid cols={isAdmin ? 3 : 2}>
+        {isAdmin && (
+          <>
+            <QuickActionCard
+              title="シフト作成"
+              description="月別サマリー・日別ガントチャート"
+              icon={Calendar}
+              href="/dashboard/shifts"
+              badge="管理者"
+            />
+            <QuickActionCard
+              title="スタッフ管理"
+              description="スタッフ情報・勤務可能時間の管理"
+              icon={Users}
+              href="/dashboard/staff"
+              badge="管理者"
+            />
+            <QuickActionCard
+              title="必要人数設定"
+              description="時間帯別の必要人数を設定"
+              icon={ClipboardList}
+              href="/dashboard/requirements"
+              badge="管理者"
+            />
+          </>
+        )}
+        <QuickActionCard
+          title="マイシフト"
+          description="自分のシフト・勤務時間を確認"
+          icon={CalendarDays}
+          href="/dashboard/my-shifts"
+          badge="全員"
+          badgeVariant="secondary"
+        />
+        <QuickActionCard
+          title="休み希望"
+          description="休み希望日を入力"
+          icon={CalendarOff}
+          href="/dashboard/time-off"
+          badge="全員"
+          badgeVariant="secondary"
+        />
+      </PageGrid>
 
-          <Card
-            className="border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+      {/* 今週のシフト */}
+      <PageSection className="mt-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+          <div>
+            <h2 className="text-lg font-semibold text-[#1D1D1F]">今週のシフト</h2>
+            <p className="text-sm text-[#86868B]">
+              {format(weekDays[0], 'M月d日', { locale: ja })} -{' '}
+              {format(weekDays[6], 'M月d日', { locale: ja })}
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => router.push('/dashboard/my-shifts')}
+            className="border-[#E5E5EA] hover:bg-[#F5F5F7]"
           >
-            <CardHeader>
-              <CardTitle className="text-lg text-[#1D1D1F]">マイシフト</CardTitle>
-              <CardDescription className="text-[#86868B]">
-                自分のシフト・勤務時間を確認
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Badge variant="outline" className="border-[#D2D2D7] text-[#86868B]">
-                全員
-              </Badge>
-            </CardContent>
-          </Card>
-
-          <Card
-            className="border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-            onClick={() => router.push('/dashboard/time-off')}
-          >
-            <CardHeader>
-              <CardTitle className="text-lg text-[#1D1D1F]">休み希望</CardTitle>
-              <CardDescription className="text-[#86868B]">
-                休み希望日を入力
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Badge variant="outline" className="border-[#D2D2D7] text-[#86868B]">
-                全員
-              </Badge>
-            </CardContent>
-          </Card>
+            詳細を見る
+            <ArrowRight className="w-4 h-4 ml-2" />
+          </Button>
         </div>
 
-        {/* 今週のシフト */}
-        <Card className="mt-8 border-0 shadow-sm">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-lg text-[#1D1D1F]">今週のシフト</CardTitle>
-                <CardDescription className="text-[#86868B]">
-                  {format(weekDays[0], 'M月d日', { locale: ja })} - {format(weekDays[6], 'M月d日', { locale: ja })}
-                </CardDescription>
-              </div>
-              <div className="flex items-center gap-4">
-                <div className="text-right">
-                  <p className="text-sm text-[#86868B]">今週の勤務</p>
-                  <p className="text-lg font-semibold text-[#1D1D1F]">
-                    {weeklyStats.shiftCount}回 / {weeklyStats.totalTime}
-                  </p>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => router.push('/dashboard/my-shifts')}
-                >
-                  詳細を見る
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="h-32 flex items-center justify-center">
-                <p className="text-[#86868B]">読み込み中...</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-7 gap-2">
-                {weekDays.map((day) => {
-                  const dayOfWeek = getDay(day);
-                  const shift = getShiftForDate(day);
-                  const timeOff = getTimeOffForDate(day);
-                  const isTodayDate = isToday(day);
+        {loading ? (
+          <div className="grid grid-cols-7 gap-2">
+            {[...Array(7)].map((_, i) => (
+              <div key={i} className="h-28 bg-[#F5F5F7] rounded-xl animate-pulse" />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-7 gap-2">
+            {weekDays.map((day) => (
+              <WeekDayCell
+                key={day.toISOString()}
+                day={day}
+                shift={getShiftForDate(day)}
+                timeOff={getTimeOffForDate(day)}
+              />
+            ))}
+          </div>
+        )}
 
-                  return (
-                    <div
-                      key={day.toISOString()}
-                      className={`p-3 rounded-lg border ${
-                        isTodayDate
-                          ? 'border-[#007AFF] bg-blue-50'
-                          : 'border-[#D2D2D7] bg-white'
-                      }`}
-                    >
-                      <div className="text-center mb-2">
-                        <span
-                          className={`text-xs font-medium ${
-                            dayOfWeek === 0
-                              ? 'text-red-500'
-                              : dayOfWeek === 6
-                              ? 'text-blue-500'
-                              : 'text-[#86868B]'
-                          }`}
-                        >
-                          {dayOfWeekLabels[dayOfWeek]}
-                        </span>
-                        <p
-                          className={`text-lg font-semibold ${
-                            isTodayDate ? 'text-[#007AFF]' : 'text-[#1D1D1F]'
-                          }`}
-                        >
-                          {format(day, 'd')}
-                        </p>
-                      </div>
-
-                      {shift ? (
-                        <div className="bg-[#007AFF] text-white rounded p-2 text-center">
-                          <p className="text-xs font-medium">
-                            {shift.startTime.slice(0, 5)}
-                          </p>
-                          <p className="text-[10px] text-blue-100">〜</p>
-                          <p className="text-xs font-medium">
-                            {shift.endTime.slice(0, 5)}
-                          </p>
-                          {shift.isHelpFromOtherStore && (
-                            <Badge className="mt-1 bg-orange-500 text-white text-[10px] px-1">
-                              ヘルプ
-                            </Badge>
-                          )}
-                        </div>
-                      ) : timeOff ? (
-                        <div
-                          className={`rounded p-2 text-center text-xs ${
-                            timeOff.status === 'approved'
-                              ? 'bg-green-100 text-green-800'
-                              : timeOff.status === 'pending'
-                              ? 'bg-yellow-100 text-yellow-800'
-                              : 'bg-red-100 text-red-800'
-                          }`}
-                        >
-                          {timeOff.status === 'approved'
-                            ? '休み'
-                            : timeOff.status === 'pending'
-                            ? '申請中'
-                            : '却下'}
-                        </div>
-                      ) : (
-                        <div className="h-16 flex items-center justify-center">
-                          <span className="text-xs text-[#86868B]">-</span>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* 凡例 */}
-            <div className="flex flex-wrap items-center gap-4 mt-4 pt-4 border-t border-[#D2D2D7]">
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-[#007AFF] rounded" />
-                <span className="text-xs text-[#86868B]">シフト</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-orange-500 rounded" />
-                <span className="text-xs text-[#86868B]">ヘルプ</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-green-100 border border-green-300 rounded" />
-                <span className="text-xs text-[#86868B]">休み</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-yellow-100 border border-yellow-300 rounded" />
-                <span className="text-xs text-[#86868B]">申請中</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </main>
-    </div>
+        {/* 凡例 */}
+        <div className="flex flex-wrap items-center gap-4 sm:gap-6 mt-6 pt-4 border-t border-[#E5E5EA]">
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 bg-gradient-to-br from-[#007AFF] to-[#5856D6] rounded" />
+            <span className="text-xs text-[#86868B]">シフト</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 bg-[#FF9500] rounded" />
+            <span className="text-xs text-[#86868B]">ヘルプ</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 bg-[#34C759]/20 border border-[#34C759]/30 rounded" />
+            <span className="text-xs text-[#86868B]">休み</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 bg-[#FF9500]/20 border border-[#FF9500]/30 rounded" />
+            <span className="text-xs text-[#86868B]">申請中</span>
+          </div>
+        </div>
+      </PageSection>
+    </DashboardLayout>
   );
 }
