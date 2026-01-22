@@ -256,6 +256,18 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
     return timeMin >= startMin && timeMin < endMin;
   }, [getShiftForStaff]);
 
+  // シフトが8時間超（残業）かどうかをチェック
+  const isOvertimeShift = useCallback((staffId: number) => {
+    const shift = getShiftForStaff(staffId);
+    if (!shift) return false;
+
+    const startMin = timeToMinutes(shift.startTime);
+    const endMin = timeToMinutes(shift.endTime);
+    const durationMinutes = endMin - startMin;
+
+    return durationMinutes > 8 * 60; // 8時間 = 480分
+  }, [getShiftForStaff]);
+
   const getRequiredCountForSlot = useCallback((time: string) => {
     const req = requirements.find((r) => r.timeSlot === time);
     return req?.requiredCount || 0;
@@ -626,13 +638,16 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
                         {TIME_SLOTS.map((time) => {
                           const isAvailable = isStaffAvailable(staffMember.id, time);
                           const isInShift = isTimeInShift(staffMember.id, time);
+                          const isOvertime = isOvertimeShift(staffMember.id);
 
                           return (
                             <td
                               key={time}
                               className={`p-0 h-6 cursor-pointer transition-colors ${
                                 isInShift
-                                  ? 'bg-[#007AFF]'
+                                  ? isOvertime
+                                    ? 'bg-[#FF9500]' // 8時間超（残業）はオレンジ
+                                    : 'bg-[#007AFF]' // 通常シフトは青
                                   : isAvailable
                                   ? 'bg-[#34C759]/20 hover:bg-[#34C759]/30'
                                   : 'bg-[#F5F5F7] hover:bg-[#E5E5EA]'
@@ -653,6 +668,10 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
               <div className="flex items-center gap-2">
                 <div className="w-4 h-4 bg-[#007AFF] rounded" />
                 <span className="text-sm text-[#86868B]">シフト</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 bg-[#FF9500] rounded" />
+                <span className="text-sm text-[#86868B]">残業（8h超）</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-4 h-4 bg-[#34C759]/20 border border-[#34C759]/30 rounded" />

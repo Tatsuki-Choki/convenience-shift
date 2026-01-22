@@ -19,8 +19,31 @@ import {
   Check,
   Loader2,
   TrendingUp,
+  Clock,
 } from "lucide-react";
 import type { ProposedShift, UnfilledSlot } from "@/lib/gemini/types";
+
+// シフト時間が8時間を超えているかチェック
+function isOvertimeShift(startTime: string, endTime: string): boolean {
+  const [startH, startM] = startTime.split(":").map(Number);
+  const [endH, endM] = endTime.split(":").map(Number);
+  const startMinutes = startH * 60 + startM;
+  const endMinutes = endH * 60 + endM;
+  const duration = endMinutes - startMinutes;
+  return duration > 8 * 60;
+}
+
+// シフト時間を計算（時間単位）
+function getShiftDuration(startTime: string, endTime: string): string {
+  const [startH, startM] = startTime.split(":").map(Number);
+  const [endH, endM] = endTime.split(":").map(Number);
+  const startMinutes = startH * 60 + startM;
+  const endMinutes = endH * 60 + endM;
+  const durationMinutes = endMinutes - startMinutes;
+  const hours = Math.floor(durationMinutes / 60);
+  const minutes = durationMinutes % 60;
+  return minutes > 0 ? `${hours}h${minutes}m` : `${hours}h`;
+}
 
 interface AutoAssignPreviewDialogProps {
   open: boolean;
@@ -97,24 +120,42 @@ export function AutoAssignPreviewDialog({
               <div className="space-y-2">
                 <h4 className="text-sm font-medium">提案されたシフト</h4>
                 <div className="max-h-[200px] overflow-y-auto space-y-2">
-                  {proposedShifts.map((shift, index) => (
-                    <div
-                      key={index}
-                      className="rounded-lg border p-3 space-y-1"
-                    >
-                      <div className="flex items-center gap-2">
-                        <User className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-medium">{shift.staffName}</span>
-                        <Badge variant="outline" className="ml-auto">
-                          {shift.startTime}〜{shift.endTime}
-                        </Badge>
+                  {proposedShifts.map((shift, index) => {
+                    const isOvertime = isOvertimeShift(shift.startTime, shift.endTime);
+                    const duration = getShiftDuration(shift.startTime, shift.endTime);
+
+                    return (
+                      <div
+                        key={index}
+                        className={`rounded-lg border p-3 space-y-1 ${
+                          isOvertime ? "border-orange-300 bg-orange-50" : ""
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <User className="h-4 w-4 text-muted-foreground" />
+                          <span className="font-medium">{shift.staffName}</span>
+                          <div className="ml-auto flex items-center gap-2">
+                            {isOvertime && (
+                              <Badge variant="outline" className="border-orange-400 bg-orange-100 text-orange-700 text-xs">
+                                <Clock className="h-3 w-3 mr-1" />
+                                残業
+                              </Badge>
+                            )}
+                            <Badge
+                              variant="outline"
+                              className={isOvertime ? "border-orange-400 text-orange-700" : ""}
+                            >
+                              {shift.startTime}〜{shift.endTime}（{duration}）
+                            </Badge>
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-2 text-sm text-muted-foreground">
+                          <Lightbulb className="h-4 w-4 mt-0.5 shrink-0" />
+                          <span>{shift.reason}</span>
+                        </div>
                       </div>
-                      <div className="flex items-start gap-2 text-sm text-muted-foreground">
-                        <Lightbulb className="h-4 w-4 mt-0.5 shrink-0" />
-                        <span>{shift.reason}</span>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ) : (
