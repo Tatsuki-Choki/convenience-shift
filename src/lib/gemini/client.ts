@@ -8,7 +8,7 @@ let model: GenerativeModel | null = null;
 export function initializeGemini(apiKey: string): void {
   genAI = new GoogleGenerativeAI(apiKey);
   model = genAI.getGenerativeModel({
-    model: "gemini-1.5-flash",
+    model: "gemini-2.5-flash",
     generationConfig: {
       responseMimeType: "application/json",
       temperature: 0.2, // 安定した出力のため低めに設定
@@ -174,7 +174,7 @@ export async function validateApiKey(apiKey: string): Promise<boolean> {
   try {
     const tempGenAI = new GoogleGenerativeAI(apiKey);
     const tempModel = tempGenAI.getGenerativeModel({
-      model: "gemini-1.5-flash",
+      model: "gemini-2.5-flash",
     });
 
     // 簡単なテストリクエスト
