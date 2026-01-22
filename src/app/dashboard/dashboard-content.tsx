@@ -70,7 +70,10 @@ export function DashboardContent({ user }: DashboardContentProps) {
                 </CardContent>
               </Card>
 
-              <Card className="border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer">
+              <Card
+                className="border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                onClick={() => router.push('/dashboard/requirements')}
+              >
                 <CardHeader>
                   <CardTitle className="text-lg text-[#1D1D1F]">必要人数設定</CardTitle>
                   <CardDescription className="text-[#86868B]">
