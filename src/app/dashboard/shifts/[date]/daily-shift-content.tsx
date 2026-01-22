@@ -157,18 +157,22 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
 
   const fetchStaff = useCallback(async () => {
     try {
-      const res = await fetch(`/api/staff?storeId=${selectedStoreId}`);
-      if (res.ok) {
-        const data = await res.json();
-        setStaffList(data);
+      // スタッフ一覧と勤務可能時間を並列取得（N+1解消）
+      const [staffRes, availRes] = await Promise.all([
+        fetch(`/api/staff?storeId=${selectedStoreId}`),
+        fetch(`/api/availability?storeId=${selectedStoreId}`),
+      ]);
 
+      if (staffRes.ok) {
+        const staffData = await staffRes.json();
+        setStaffList(staffData);
+      }
+
+      if (availRes.ok) {
+        const availData: Record<string, AvailabilityPattern[]> = await availRes.json();
         const availMap = new Map<number, AvailabilityPattern[]>();
-        for (const s of data) {
-          const availRes = await fetch(`/api/staff/${s.id}/availability`);
-          if (availRes.ok) {
-            const patterns = await availRes.json();
-            availMap.set(s.id, patterns);
-          }
+        for (const [staffId, patterns] of Object.entries(availData)) {
+          availMap.set(parseInt(staffId), patterns);
         }
         setAvailabilityMap(availMap);
       }
