@@ -31,6 +31,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import type { SessionUser } from '@/lib/auth';
+import { TIME_SLOTS, timeToMinutes, addHoursToTime, DEFAULT_SHIFT } from '@/lib/time-constants';
 
 interface Store {
   id: number;
@@ -80,24 +81,6 @@ interface DailyShiftContentProps {
 }
 
 const dayOfWeekLabels = ['日', '月', '火', '水', '木', '金', '土'];
-
-// 時間スロットを生成（6:00〜24:00を30分単位）
-const generateTimeSlots = () => {
-  const slots = [];
-  for (let h = 6; h <= 23; h++) {
-    slots.push(`${String(h).padStart(2, '0')}:00`);
-    slots.push(`${String(h).padStart(2, '0')}:30`);
-  }
-  return slots;
-};
-
-const timeSlots = generateTimeSlots();
-
-// 時間を分に変換
-const timeToMinutes = (time: string): number => {
-  const [h, m] = time.split(':').map(Number);
-  return h * 60 + m;
-};
 
 // ローディングスケルトン
 const LoadingSkeleton = memo(function LoadingSkeleton() {
@@ -264,20 +247,27 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
     }).length;
   }, [shifts]);
 
-  const handleOpenEditDialog = useCallback((staffId: number) => {
+  const handleOpenEditDialog = useCallback((staffId: number, clickedTime?: string) => {
     const existingShift = getShiftForStaff(staffId);
     const availability = getStaffAvailability(staffId);
 
     setEditingStaffId(staffId);
     if (existingShift) {
+      // 既存シフトはその時間を使用
       setEditStartTime(existingShift.startTime);
       setEditEndTime(existingShift.endTime);
+    } else if (clickedTime) {
+      // クリックした時間を開始時間、+3時間を終了時間に設定
+      setEditStartTime(clickedTime);
+      setEditEndTime(addHoursToTime(clickedTime, DEFAULT_SHIFT.duration));
     } else if (availability) {
+      // 勤務可能時間を使用
       setEditStartTime(availability.startTime);
       setEditEndTime(availability.endTime);
     } else {
-      setEditStartTime('09:00');
-      setEditEndTime('17:00');
+      // デフォルト時間を使用
+      setEditStartTime(DEFAULT_SHIFT.startTime);
+      setEditEndTime(DEFAULT_SHIFT.endTime);
     }
     setEditDialogOpen(true);
   }, [getShiftForStaff, getStaffAvailability]);
@@ -473,7 +463,7 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
                     <th className="sticky left-0 bg-white p-3 text-left text-sm font-medium text-[#86868B] w-[150px] z-10">
                       スタッフ
                     </th>
-                    {timeSlots.map((time) => (
+                    {TIME_SLOTS.map((time) => (
                       <th
                         key={time}
                         className="p-1 text-center text-xs font-normal text-[#86868B] min-w-[40px]"
@@ -487,7 +477,7 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
                     <td className="sticky left-0 bg-[#F5F5F7] p-3 text-sm text-[#86868B] z-10">
                       必要人数
                     </td>
-                    {timeSlots.map((time) => {
+                    {TIME_SLOTS.map((time) => {
                       const required = getRequiredCountForSlot(time);
                       const actual = getActualCountForSlot(time);
                       const status =
@@ -554,7 +544,7 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
                             )}
                           </div>
                         </td>
-                        {timeSlots.map((time) => {
+                        {TIME_SLOTS.map((time) => {
                           const isAvailable = isStaffAvailable(staffMember.id, time);
                           const isInShift = isTimeInShift(staffMember.id, time);
 
@@ -568,7 +558,7 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
                                   ? 'bg-[#34C759]/20 hover:bg-[#34C759]/30'
                                   : 'bg-[#F5F5F7] hover:bg-[#E5E5EA]'
                               }`}
-                              onClick={() => handleOpenEditDialog(staffMember.id)}
+                              onClick={() => handleOpenEditDialog(staffMember.id, time)}
                             />
                           );
                         })}
@@ -630,7 +620,7 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {timeSlots.map((time) => (
+                    {TIME_SLOTS.map((time) => (
                       <SelectItem key={time} value={time}>
                         {time}
                       </SelectItem>
@@ -645,7 +635,7 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {timeSlots.map((time) => (
+                    {TIME_SLOTS.map((time) => (
                       <SelectItem key={time} value={time}>
                         {time}
                       </SelectItem>

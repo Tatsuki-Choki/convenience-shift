@@ -22,6 +22,7 @@ import {
   Users,
 } from 'lucide-react';
 import type { SessionUser } from '@/lib/auth';
+import { TIME_SLOTS } from '@/lib/time-constants';
 
 interface Store {
   id: number;
@@ -42,19 +43,6 @@ interface RequirementsContentProps {
 
 const dayOfWeekLabels = ['日曜日', '月曜日', '火曜日', '水曜日', '木曜日', '金曜日', '土曜日'];
 const dayOfWeekShortLabels = ['日', '月', '火', '水', '木', '金', '土'];
-
-// 30分刻みの時間スロットを生成（6:00〜24:00）
-const generateTimeSlots = (): string[] => {
-  const slots: string[] = [];
-  for (let hour = 6; hour < 24; hour++) {
-    slots.push(`${hour.toString().padStart(2, '0')}:00`);
-    slots.push(`${hour.toString().padStart(2, '0')}:30`);
-  }
-  slots.push('24:00');
-  return slots;
-};
-
-const timeSlots = generateTimeSlots();
 
 // ローディングスケルトン
 const LoadingSkeleton = memo(function LoadingSkeleton() {
@@ -481,7 +469,7 @@ export function RequirementsContent({ user }: RequirementsContentProps) {
           <>
             {/* 時間帯グリッド */}
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2 mb-6">
-              {timeSlots.map((timeSlot) => {
+              {TIME_SLOTS.map((timeSlot) => {
                 const count = requirements.get(timeSlot) || 0;
                 return (
                   <TimeSlotCard
