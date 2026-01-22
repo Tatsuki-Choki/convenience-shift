@@ -86,7 +86,10 @@ export function DashboardContent({ user }: DashboardContentProps) {
             </>
           )}
 
-          <Card className="border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer">
+          <Card
+            className="border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+            onClick={() => router.push('/dashboard/my-shifts')}
+          >
             <CardHeader>
               <CardTitle className="text-lg text-[#1D1D1F]">マイシフト</CardTitle>
               <CardDescription className="text-[#86868B]">
