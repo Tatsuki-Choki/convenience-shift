@@ -20,9 +20,30 @@ import {
   AlertCircle,
   CheckCircle,
   Users,
+  Sparkles,
 } from 'lucide-react';
 import type { SessionUser } from '@/lib/auth';
-import { TIME_SLOTS } from '@/lib/time-constants';
+import { TIME_SLOTS, timeToMinutes } from '@/lib/time-constants';
+
+// コンビニのおすすめ必要人数設定（時間帯別）
+function getRecommendedCount(timeSlot: string): number {
+  const hour = parseInt(timeSlot.split(':')[0], 10);
+
+  // 深夜 (0:00-6:00): 2人
+  if (hour >= 0 && hour < 6) return 2;
+  // 早朝ラッシュ (6:00-9:00): 3人
+  if (hour >= 6 && hour < 9) return 3;
+  // 午前 (9:00-12:00): 2人
+  if (hour >= 9 && hour < 12) return 2;
+  // ランチタイム (12:00-14:00): 3人
+  if (hour >= 12 && hour < 14) return 3;
+  // 午後 (14:00-17:00): 2人
+  if (hour >= 14 && hour < 17) return 2;
+  // 夕方ラッシュ (17:00-21:00): 3人
+  if (hour >= 17 && hour < 21) return 3;
+  // 夜 (21:00-24:00): 2人
+  return 2;
+}
 
 interface Store {
   id: number;
@@ -372,6 +393,57 @@ export function RequirementsContent({ user }: RequirementsContentProps) {
     }
   }, []);
 
+  const handleApplyRecommended = useCallback(() => {
+    if (confirm('おすすめ設定を適用しますか？\n\n時間帯別の標準的な人数配置に設定されます。')) {
+      const newRequirements = new Map<string, number>();
+      for (const timeSlot of TIME_SLOTS) {
+        newRequirements.set(timeSlot, getRecommendedCount(timeSlot));
+      }
+      setRequirements(newRequirements);
+      setHasChanges(true);
+    }
+  }, []);
+
+  const handleApplyRecommendedToAllDays = useCallback(async () => {
+    if (!confirm('おすすめ設定を全曜日に適用しますか？\n\n全ての曜日に標準的な人数配置が設定されます。')) {
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const requirementsArray = TIME_SLOTS.map((timeSlot) => ({
+        timeSlot,
+        requiredCount: getRecommendedCount(timeSlot),
+      }));
+
+      for (let day = 0; day < 7; day++) {
+        await fetch('/api/shift-requirements', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            storeId: parseInt(selectedStoreId),
+            dayOfWeek: day,
+            requirements: requirementsArray,
+          }),
+        });
+      }
+
+      // 現在表示中の曜日も更新
+      const newRequirements = new Map<string, number>();
+      for (const timeSlot of TIME_SLOTS) {
+        newRequirements.set(timeSlot, getRecommendedCount(timeSlot));
+      }
+      setRequirements(newRequirements);
+      setHasChanges(false);
+      alert('全曜日におすすめ設定を適用しました');
+    } catch (error) {
+      console.error('おすすめ設定適用エラー:', error);
+      alert('適用に失敗しました');
+    } finally {
+      setSaving(false);
+    }
+  }, [selectedStoreId]);
+
   const handleStoreChange = useCallback((value: string) => {
     setSelectedStoreId(value);
   }, []);
@@ -490,6 +562,26 @@ export function RequirementsContent({ user }: RequirementsContentProps) {
                 一括操作
               </h4>
               <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleApplyRecommended}
+                  disabled={saving}
+                  className="rounded-lg border-[#007AFF] text-[#007AFF] hover:bg-[#007AFF]/5"
+                >
+                  <Sparkles className="w-4 h-4 mr-1" />
+                  おすすめ設定
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleApplyRecommendedToAllDays}
+                  disabled={saving}
+                  className="rounded-lg border-[#007AFF] text-[#007AFF] hover:bg-[#007AFF]/5"
+                >
+                  <Sparkles className="w-4 h-4 mr-1" />
+                  全曜日におすすめ設定
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
