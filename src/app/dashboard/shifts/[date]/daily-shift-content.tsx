@@ -90,10 +90,10 @@ const dayOfWeekLabels = ['日', '月', '火', '水', '木', '金', '土'];
 // ローディングスケルトン
 const LoadingSkeleton = memo(function LoadingSkeleton() {
   return (
-    <div className="space-y-4 animate-pulse">
-      <div className="h-10 bg-[#E5E5EA] rounded-xl w-full" />
-      {[...Array(5)].map((_, i) => (
-        <div key={i} className="h-12 bg-[#E5E5EA] rounded-xl" />
+    <div className="space-y-2 animate-pulse">
+      <div className="h-8 bg-[#E5E5EA] rounded-xl w-full" />
+      {[...Array(10)].map((_, i) => (
+        <div key={i} className="h-6 bg-[#E5E5EA] rounded-xl" />
       ))}
     </div>
   );
@@ -534,8 +534,11 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
               <table className="w-full min-w-[1200px]">
                 <thead>
                   <tr className="border-b border-[#E5E5EA]">
-                    <th className="sticky left-0 bg-white p-3 text-left text-sm font-medium text-[#86868B] w-[150px] z-10">
-                      スタッフ
+                    <th className="sticky left-0 bg-white p-1 text-left text-xs font-medium text-[#86868B] w-[100px] z-10">
+                      名前
+                    </th>
+                    <th className="sticky left-[100px] bg-white p-1 text-left text-xs font-medium text-[#86868B] w-[50px] z-10">
+                      役職
                     </th>
                     {TIME_SLOTS.map((time) => (
                       <th
@@ -548,7 +551,7 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
                   </tr>
                   {/* 必要人数行 */}
                   <tr className="border-b border-[#E5E5EA] bg-[#F5F5F7]">
-                    <td className="sticky left-0 bg-[#F5F5F7] p-3 text-sm text-[#86868B] z-10">
+                    <td colSpan={2} className="sticky left-0 bg-[#F5F5F7] p-1 text-xs text-[#86868B] z-10 w-[150px]">
                       必要人数
                     </td>
                     {TIME_SLOTS.map((time) => {
@@ -588,35 +591,37 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
                         key={staffMember.id}
                         className="border-b border-[#E5E5EA] hover:bg-[#F5F5F7]/50 transition-colors"
                       >
-                        <td className="sticky left-0 bg-white p-3 z-10">
-                          <div
-                            className="cursor-pointer"
-                            onClick={() => handleOpenEditDialog(staffMember.id)}
-                          >
-                            <p className="text-sm font-medium text-[#1D1D1F]">
+                        {/* 名前セル */}
+                        <td
+                          className="sticky left-0 bg-white p-1 z-10 w-[100px] cursor-pointer"
+                          onClick={() => handleOpenEditDialog(staffMember.id)}
+                        >
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs font-medium text-[#1D1D1F] truncate">
                               {staffMember.name}
-                            </p>
-                            <div className="flex items-center gap-1 mt-1">
-                              <Badge
-                                variant="outline"
-                                className={`text-xs border-0 ${
-                                  staffMember.role === 'manager'
-                                    ? 'bg-[#007AFF]/10 text-[#007AFF]'
-                                    : 'bg-[#F5F5F7] text-[#86868B]'
-                                }`}
-                              >
-                                {staffMember.employmentType === 'employee'
-                                  ? '社員'
-                                  : 'アルバイト'}
-                              </Badge>
-                            </div>
+                            </span>
                             {!availability && (
-                              <p className="text-xs text-[#FF3B30] mt-1 flex items-center gap-1">
-                                <AlertCircle className="w-3 h-3" />
-                                勤務不可
-                              </p>
+                              <AlertCircle className="w-3 h-3 text-[#FF3B30] flex-shrink-0" />
                             )}
                           </div>
+                        </td>
+                        {/* 役職セル */}
+                        <td
+                          className="sticky left-[100px] bg-white p-1 z-10 w-[50px] cursor-pointer"
+                          onClick={() => handleOpenEditDialog(staffMember.id)}
+                        >
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] px-1 py-0 border-0 ${
+                              staffMember.role === 'manager'
+                                ? 'bg-[#007AFF]/10 text-[#007AFF]'
+                                : 'bg-[#F5F5F7] text-[#86868B]'
+                            }`}
+                          >
+                            {staffMember.employmentType === 'employee'
+                              ? '社員'
+                              : 'ﾊﾞｲﾄ'}
+                          </Badge>
                         </td>
                         {TIME_SLOTS.map((time) => {
                           const isAvailable = isStaffAvailable(staffMember.id, time);
@@ -625,7 +630,7 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
                           return (
                             <td
                               key={time}
-                              className={`p-0 h-12 cursor-pointer transition-colors ${
+                              className={`p-0 h-6 cursor-pointer transition-colors ${
                                 isInShift
                                   ? 'bg-[#007AFF]'
                                   : isAvailable

@@ -138,13 +138,13 @@ async function seed() {
     const isEmployee = s.employmentType === 'employee';
 
     if (isEmployee) {
-      // 社員は全日フルタイム可能
+      // 社員は全日フルタイム可能（深夜帯含む24時間対応）
       for (let day = 0; day < 7; day++) {
         availabilityData.push({
           staffId: s.id,
           dayOfWeek: day,
-          startTime: '06:00',
-          endTime: '23:00',
+          startTime: '00:00',
+          endTime: '23:30',
         });
       }
     } else if (isStudent) {
@@ -169,11 +169,13 @@ async function seed() {
         }
       }
     } else {
-      // 主婦・フリーターなどはランダム
+      // 主婦・フリーターなどはランダム（深夜帯パターンを追加）
       const patterns = [
         { start: '06:00', end: '14:00' }, // 早番
         { start: '09:00', end: '17:00' }, // 日中
         { start: '14:00', end: '22:00' }, // 遅番
+        { start: '22:00', end: '23:30' }, // 深夜前半
+        { start: '00:00', end: '06:00' }, // 深夜後半
       ];
       const pattern = patterns[Math.floor(Math.random() * patterns.length)];
 
