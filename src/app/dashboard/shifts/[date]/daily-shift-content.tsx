@@ -388,7 +388,7 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
   const handleAutoAssign = useCallback(async () => {
     setAutoAssignLoading(true);
     try {
-      const result = await proposeShifts(date);
+      const result = await proposeShifts(date, parseInt(selectedStoreId));
       setAutoAssignResult(result);
       setAutoAssignPreviewOpen(true);
     } catch (error) {
@@ -396,26 +396,26 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
     } finally {
       setAutoAssignLoading(false);
     }
-  }, [date]);
+  }, [date, selectedStoreId]);
 
   const handleRecalculate = useCallback(async () => {
     setAutoAssignLoading(true);
     try {
-      const result = await proposeShifts(date);
+      const result = await proposeShifts(date, parseInt(selectedStoreId));
       setAutoAssignResult(result);
     } catch (error) {
       console.error('再計算エラー:', error);
     } finally {
       setAutoAssignLoading(false);
     }
-  }, [date]);
+  }, [date, selectedStoreId]);
 
   const handleApplyShifts = useCallback(async () => {
     if (!autoAssignResult || autoAssignResult.proposedShifts.length === 0) return;
 
     setIsApplyingShifts(true);
     try {
-      await applyProposedShifts(date, autoAssignResult.proposedShifts);
+      await applyProposedShifts(date, parseInt(selectedStoreId), autoAssignResult.proposedShifts);
       await fetchShifts();
       setAutoAssignPreviewOpen(false);
       setAutoAssignResult(null);
@@ -424,7 +424,7 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
     } finally {
       setIsApplyingShifts(false);
     }
-  }, [date, autoAssignResult, fetchShifts]);
+  }, [date, selectedStoreId, autoAssignResult, fetchShifts]);
 
   const editingStaff = useMemo(() =>
     staffList.find((s) => s.id === editingStaffId),

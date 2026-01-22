@@ -9,22 +9,23 @@ import type {
 
 // APIレスポンスの型定義
 interface StaffApiResponse {
-  id: string;
+  id: number;
   name: string;
-  hourlyWage: number;
+  hourlyRate: number;
+  storeId: number;
 }
 
 interface AvailabilityApiResponse {
-  id: string;
-  staffId: string;
+  id: number;
+  staffId: number;
   dayOfWeek: number;
   startTime: string;
   endTime: string;
 }
 
 interface TimeOffApiResponse {
-  id: string;
-  staffId: string;
+  id: number;
+  staffId: number;
   date: string;
   startTime: string | null;
   endTime: string | null;
@@ -32,22 +33,22 @@ interface TimeOffApiResponse {
 }
 
 interface RequirementApiResponse {
-  id: string;
+  id: number;
+  storeId: number;
   dayOfWeek: number;
-  hour: number;
+  timeSlot: string;
   requiredCount: number;
 }
 
 interface ShiftApiResponse {
-  id: string;
-  staffId: string;
+  id: number;
+  staffId: number;
+  storeId: number;
   date: string;
   startTime: string;
   endTime: string;
-  staff: {
-    id: string;
-    name: string;
-  };
+  staffName: string | null;
+  staffRole: string | null;
 }
 
 // 日付から曜日を取得
@@ -58,18 +59,19 @@ export function getDayOfWeek(dateString: string): number {
 
 // 自動割り振りに必要なデータを収集
 export async function collectAutoAssignData(
-  date: string
+  date: string,
+  storeId: number
 ): Promise<AutoAssignInput> {
   const dayOfWeek = getDayOfWeek(date);
 
   // 並列でAPIを呼び出し
   const [staff, availabilities, timeOffRequests, requirements, existingShifts] =
     await Promise.all([
-      fetchStaff(),
-      fetchAvailabilities(dayOfWeek),
-      fetchTimeOffRequests(date),
-      fetchRequirements(dayOfWeek),
-      fetchExistingShifts(date),
+      fetchStaff(storeId),
+      fetchAvailabilities(storeId, dayOfWeek),
+      fetchTimeOffRequests(storeId),
+      fetchRequirements(storeId, dayOfWeek),
+      fetchExistingShifts(storeId, date),
     ]);
 
   return {
@@ -84,56 +86,66 @@ export async function collectAutoAssignData(
 }
 
 // スタッフ一覧を取得
-async function fetchStaff(): Promise<StaffInfo[]> {
-  const response = await fetch("/api/staff");
+async function fetchStaff(storeId: number): Promise<StaffInfo[]> {
+  const response = await fetch(`/api/staff?storeId=${storeId}`);
   if (!response.ok) {
     throw new Error("スタッフ情報の取得に失敗しました");
   }
 
   const data: StaffApiResponse[] = await response.json();
   return data.map((s) => ({
-    id: s.id,
+    id: String(s.id),
     name: s.name,
-    hourlyWage: s.hourlyWage,
+    hourlyWage: s.hourlyRate,
   }));
 }
 
 // 勤務可能時間パターンを取得（指定曜日）
 async function fetchAvailabilities(
+  storeId: number,
   dayOfWeek: number
 ): Promise<AvailabilityPattern[]> {
-  const response = await fetch("/api/availability-patterns");
+  const response = await fetch(`/api/availability?storeId=${storeId}`);
   if (!response.ok) {
     throw new Error("勤務可能時間の取得に失敗しました");
   }
 
-  const data: AvailabilityApiResponse[] = await response.json();
+  // APIはスタッフIDをキーとしたオブジェクトを返す
+  const data: Record<string, AvailabilityApiResponse[]> = await response.json();
 
-  // 指定曜日のパターンのみフィルタ
-  return data
-    .filter((a) => a.dayOfWeek === dayOfWeek)
-    .map((a) => ({
-      staffId: a.staffId,
-      dayOfWeek: a.dayOfWeek,
-      startTime: a.startTime,
-      endTime: a.endTime,
-    }));
+  const result: AvailabilityPattern[] = [];
+  for (const [staffId, patterns] of Object.entries(data)) {
+    // 指定曜日のパターンのみフィルタ
+    for (const a of patterns) {
+      if (a.dayOfWeek === dayOfWeek) {
+        result.push({
+          staffId: staffId,
+          dayOfWeek: a.dayOfWeek,
+          startTime: a.startTime,
+          endTime: a.endTime,
+        });
+      }
+    }
+  }
+  return result;
 }
 
 // 休み希望を取得（指定日の承認済みのみ）
-async function fetchTimeOffRequests(date: string): Promise<TimeOffRequest[]> {
-  const response = await fetch("/api/time-off-requests");
+async function fetchTimeOffRequests(storeId: number): Promise<TimeOffRequest[]> {
+  const response = await fetch(`/api/time-off-requests?storeId=${storeId}`);
   if (!response.ok) {
-    throw new Error("休み希望の取得に失敗しました");
+    // 休み希望が取得できなくても続行（エラーにしない）
+    console.warn("休み希望の取得に失敗しました");
+    return [];
   }
 
   const data: TimeOffApiResponse[] = await response.json();
 
-  // 指定日の承認済み休暇のみフィルタ
+  // 承認済み休暇のみフィルタ
   return data
-    .filter((t) => t.date === date && t.status === "approved")
+    .filter((t) => t.status === "approved")
     .map((t) => ({
-      staffId: t.staffId,
+      staffId: String(t.staffId),
       date: t.date,
       startTime: t.startTime ?? undefined,
       endTime: t.endTime ?? undefined,
@@ -143,28 +155,38 @@ async function fetchTimeOffRequests(date: string): Promise<TimeOffRequest[]> {
 
 // シフト必要人数を取得（指定曜日）
 async function fetchRequirements(
+  storeId: number,
   dayOfWeek: number
 ): Promise<ShiftRequirement[]> {
-  const response = await fetch("/api/shift-requirements");
+  const response = await fetch(
+    `/api/shift-requirements?storeId=${storeId}&dayOfWeek=${dayOfWeek}`
+  );
   if (!response.ok) {
     throw new Error("必要人数の取得に失敗しました");
   }
 
   const data: RequirementApiResponse[] = await response.json();
 
-  // 指定曜日の必要人数のみフィルタ
-  return data
-    .filter((r) => r.dayOfWeek === dayOfWeek)
-    .map((r) => ({
+  // timeSlotをhourとminuteに変換
+  return data.map((r) => {
+    const [hour, minute] = r.timeSlot.split(":").map(Number);
+    return {
       dayOfWeek: r.dayOfWeek,
-      hour: r.hour,
+      hour,
+      minute,
       requiredCount: r.requiredCount,
-    }));
+    };
+  });
 }
 
 // 既存シフトを取得（指定日）
-async function fetchExistingShifts(date: string): Promise<ExistingShift[]> {
-  const response = await fetch(`/api/shifts?date=${date}`);
+async function fetchExistingShifts(
+  storeId: number,
+  date: string
+): Promise<ExistingShift[]> {
+  const response = await fetch(
+    `/api/shifts?storeId=${storeId}&startDate=${date}&endDate=${date}`
+  );
   if (!response.ok) {
     throw new Error("既存シフトの取得に失敗しました");
   }
@@ -172,9 +194,9 @@ async function fetchExistingShifts(date: string): Promise<ExistingShift[]> {
   const data: ShiftApiResponse[] = await response.json();
 
   return data.map((s) => ({
-    id: s.id,
-    staffId: s.staffId,
-    staffName: s.staff.name,
+    id: String(s.id),
+    staffId: String(s.staffId),
+    staffName: s.staffName || "不明",
     startTime: s.startTime,
     endTime: s.endTime,
   }));
@@ -197,9 +219,9 @@ export function getAvailableStaff(
   }[] = [];
 
   for (const staff of input.staff) {
-    // 休暇中のスタッフは除外
+    // 休暇中のスタッフは除外（日付が一致する場合のみ）
     const hasFullDayOff = input.timeOffRequests.some(
-      (t) => t.staffId === staff.id && !t.startTime && !t.endTime
+      (t) => t.staffId === staff.id && t.date === input.date && !t.startTime && !t.endTime
     );
     if (hasFullDayOff) continue;
 
@@ -216,7 +238,7 @@ export function getAvailableStaff(
 
     // 時間部分休暇を考慮
     const partialTimeOff = input.timeOffRequests.find(
-      (t) => t.staffId === staff.id && t.startTime && t.endTime
+      (t) => t.staffId === staff.id && t.date === input.date && t.startTime && t.endTime
     );
 
     // 勤務可能時間を調整

@@ -23,9 +23,9 @@ export interface ShiftProposalResult {
 }
 
 // シフト提案を実行
-export async function proposeShifts(date: string): Promise<ShiftProposalResult> {
+export async function proposeShifts(date: string, storeId: number): Promise<ShiftProposalResult> {
   // 1. データ収集
-  const input = await collectAutoAssignData(date);
+  const input = await collectAutoAssignData(date, storeId);
 
   // 2. 不足時間帯を分析
   const gaps = analyzeGaps(input);
@@ -204,6 +204,7 @@ function formatGapRange(
 // シフトを適用（API呼び出し）
 export async function applyProposedShifts(
   date: string,
+  storeId: number,
   shifts: ProposedShift[]
 ): Promise<void> {
   const response = await fetch("/api/shifts", {
@@ -213,8 +214,10 @@ export async function applyProposedShifts(
     },
     body: JSON.stringify({
       date,
+      storeId,
       shifts: shifts.map((s) => ({
         staffId: s.staffId,
+        storeId,
         date,
         startTime: s.startTime,
         endTime: s.endTime,
