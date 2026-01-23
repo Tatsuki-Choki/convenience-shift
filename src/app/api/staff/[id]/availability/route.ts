@@ -35,7 +35,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       .from(availabilityPatterns)
       .where(eq(availabilityPatterns.staffId, staffId));
 
-    return NextResponse.json(patterns);
+    return NextResponse.json(
+      patterns.map((p) => ({
+        ...p,
+        startTime: p.startTime.slice(0, 5),
+        endTime: p.endTime.slice(0, 5),
+      }))
+    );
   } catch (error) {
     console.error('勤務可能時間取得エラー:', error);
     return NextResponse.json({ error: '勤務可能時間の取得に失敗しました' }, { status: 500 });
@@ -98,7 +104,13 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       .from(availabilityPatterns)
       .where(eq(availabilityPatterns.staffId, staffId));
 
-    return NextResponse.json(updatedPatterns);
+    return NextResponse.json(
+      updatedPatterns.map((p) => ({
+        ...p,
+        startTime: p.startTime.slice(0, 5),
+        endTime: p.endTime.slice(0, 5),
+      }))
+    );
   } catch (error) {
     console.error('勤務可能時間更新エラー:', error);
     if (error instanceof Error && error.message === '管理者権限が必要です') {

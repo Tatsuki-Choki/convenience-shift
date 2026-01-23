@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, timestamp, date, time, boolean, pgEnum } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, integer, timestamp, date, time, boolean, pgEnum, index } from 'drizzle-orm/pg-core';
 
 // Enum定義
 export const roleEnum = pgEnum('role', ['owner', 'manager', 'staff']);
@@ -26,7 +26,9 @@ export const staff = pgTable('staff', {
   notes: text('notes'),
   role: roleEnum('role').default('staff').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (table) => [
+  index('staff_store_idx').on(table.storeId),
+]);
 
 // 基本勤務可能時間テーブル
 export const availabilityPatterns = pgTable('availability_patterns', {
@@ -35,7 +37,9 @@ export const availabilityPatterns = pgTable('availability_patterns', {
   dayOfWeek: integer('day_of_week').notNull(), // 0-6 (日〜土)
   startTime: time('start_time').notNull(),
   endTime: time('end_time').notNull(),
-});
+}, (table) => [
+  index('availability_staff_idx').on(table.staffId),
+]);
 
 // 休み希望テーブル
 export const timeOffRequests = pgTable('time_off_requests', {
@@ -44,7 +48,10 @@ export const timeOffRequests = pgTable('time_off_requests', {
   date: date('date').notNull(),
   status: timeOffStatusEnum('status').default('pending').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (table) => [
+  index('time_off_staff_idx').on(table.staffId),
+  index('time_off_date_idx').on(table.date),
+]);
 
 // シフト必要人数テーブル
 export const shiftRequirements = pgTable('shift_requirements', {
@@ -53,7 +60,9 @@ export const shiftRequirements = pgTable('shift_requirements', {
   dayOfWeek: integer('day_of_week').notNull(), // 0-6
   timeSlot: time('time_slot').notNull(), // 30分単位 ("09:00", "09:30", ...)
   requiredCount: integer('required_count').notNull(),
-});
+}, (table) => [
+  index('requirements_store_day_idx').on(table.storeId, table.dayOfWeek),
+]);
 
 // シフトテーブル
 export const shifts = pgTable('shifts', {
@@ -65,7 +74,10 @@ export const shifts = pgTable('shifts', {
   endTime: time('end_time').notNull(),
   isHelpFromOtherStore: boolean('is_help_from_other_store').default(false),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (table) => [
+  index('shifts_store_date_idx').on(table.storeId, table.date),
+  index('shifts_staff_idx').on(table.staffId),
+]);
 
 // 型エクスポート
 export type Store = typeof stores.$inferSelect;

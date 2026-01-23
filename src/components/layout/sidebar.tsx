@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useCallback, useMemo } from 'react';
+import { memo, useCallback, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -159,6 +159,29 @@ const MobileNavLink = memo(function MobileNavLink({
 export const Sidebar = memo(function Sidebar({ user }: SidebarProps) {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [jstNow, setJstNow] = useState<Date | null>(null);
+
+  useEffect(() => {
+    const tick = () => setJstNow(new Date());
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const formatJstDate = useCallback((date: Date) => {
+    const year = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', year: 'numeric' }).format(date);
+    const month = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', month: 'long' }).format(date);
+    const day = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', day: 'numeric' }).format(date);
+    const weekday = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', weekday: 'short' }).format(date);
+    return `${year}${month}${day}（${weekday}）`;
+  }, []);
+
+  const formatJstTime = useCallback((date: Date) => {
+    const hour = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', hour: 'numeric', hour12: false }).format(date);
+    const minute = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', minute: '2-digit' }).format(date);
+    const second = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', second: '2-digit' }).format(date);
+    return `${hour}時${minute}分${second}秒`;
+  }, []);
 
   const filteredNavItems = useMemo(
     () => navItems.filter((item) => item.roles.includes(user.role)),
@@ -196,6 +219,14 @@ export const Sidebar = memo(function Sidebar({ user }: SidebarProps) {
             </div>
             <span className="text-lg font-semibold text-[#1D1D1F]">シフト管理</span>
           </Link>
+        </div>
+        <div className="px-6 py-3 border-b border-[#E5E5EA]">
+          <p className="text-xs font-medium text-[#1D1D1F]">
+            {jstNow ? formatJstDate(jstNow) : '----年--月--日（-）'}
+          </p>
+          <p className="text-sm font-medium text-[#1D1D1F]">
+            {jstNow ? formatJstTime(jstNow) : '--時--分--秒'}
+          </p>
         </div>
 
         {/* ナビゲーション */}

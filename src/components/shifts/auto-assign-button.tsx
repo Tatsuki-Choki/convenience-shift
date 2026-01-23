@@ -65,7 +65,7 @@ export function AutoAssignButton({
       </Button>
 
       <Dialog open={menuOpen} onOpenChange={setMenuOpen}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Sparkles className="h-5 w-5" />
@@ -80,7 +80,7 @@ export function AutoAssignButton({
                 onAutoAssign();
               }}
               disabled={isLoading}
-              className="justify-start gap-2"
+              className="justify-start gap-3"
             >
               <Sparkles className="h-4 w-4" />
               シフトを自動提案
@@ -91,7 +91,7 @@ export function AutoAssignButton({
                 setMenuOpen(false);
                 onOpenSettings();
               }}
-              className="justify-start gap-2"
+              className="justify-start gap-3"
             >
               <Settings className="h-4 w-4" />
               API設定

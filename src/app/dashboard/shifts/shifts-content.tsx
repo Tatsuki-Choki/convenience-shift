@@ -266,18 +266,34 @@ export function ShiftsContent({ user }: ShiftsContentProps) {
     return [...emptyDays, ...days];
   }, [currentMonth]);
 
+  const shiftCountByDate = useMemo(() => {
+    const map = new Map<string, number>();
+    shifts.forEach((s) => {
+      map.set(s.date, (map.get(s.date) || 0) + 1);
+    });
+    return map;
+  }, [shifts]);
+
+  const requiredCountByDay = useMemo(() => {
+    const map = new Map<number, number>();
+    requirements.forEach((r) => {
+      const prev = map.get(r.dayOfWeek) || 0;
+      if (r.requiredCount > prev) {
+        map.set(r.dayOfWeek, r.requiredCount);
+      }
+    });
+    return map;
+  }, [requirements]);
+
   const getShiftCountForDate = useCallback((date: Date) => {
     const dateStr = format(date, 'yyyy-MM-dd');
-    return shifts.filter((s) => s.date === dateStr).length;
-  }, [shifts]);
+    return shiftCountByDate.get(dateStr) || 0;
+  }, [shiftCountByDate]);
 
   const getRequiredCountForDate = useCallback((date: Date) => {
     const dayOfWeek = getDay(date);
-    const dayRequirements = requirements.filter((r) => r.dayOfWeek === dayOfWeek);
-    return dayRequirements.length > 0
-      ? Math.max(...dayRequirements.map((r) => r.requiredCount))
-      : 0;
-  }, [requirements]);
+    return requiredCountByDay.get(dayOfWeek) || 0;
+  }, [requiredCountByDay]);
 
   const handlePrevMonth = useCallback(() => {
     setCurrentMonth((prev) => subMonths(prev, 1));
@@ -299,10 +315,14 @@ export function ShiftsContent({ user }: ShiftsContentProps) {
     const totalShifts = shifts.length;
     const daysWithShifts = new Set(shifts.map((s) => s.date)).size;
     const uniqueStaff = new Set(shifts.map((s) => s.staffId)).size;
-    const remainingDays = eachDayOfInterval({
-      start: new Date(),
-      end: endOfMonth(currentMonth),
-    }).length;
+    const today = new Date();
+    const monthEnd = endOfMonth(currentMonth);
+    const remainingDays = today > monthEnd
+      ? 0
+      : eachDayOfInterval({
+        start: today,
+        end: monthEnd,
+      }).length;
 
     return { totalShifts, daysWithShifts, uniqueStaff, remainingDays };
   }, [shifts, currentMonth]);

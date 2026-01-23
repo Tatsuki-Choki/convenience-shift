@@ -50,7 +50,11 @@ export function AvailabilityEditor({ staffId, initialPatterns }: AvailabilityEdi
     // 初期パターンから各曜日の設定を構築
     const patternsByDay: { [key: number]: AvailabilityPattern } = {};
     initialPatterns.forEach((p) => {
-      patternsByDay[p.dayOfWeek] = p;
+      patternsByDay[p.dayOfWeek] = {
+        ...p,
+        startTime: p.startTime ? p.startTime.slice(0, 5) : '',
+        endTime: p.endTime ? p.endTime.slice(0, 5) : '',
+      };
     });
 
     // すべての曜日のパターンを作成（未設定の曜日は空のまま）

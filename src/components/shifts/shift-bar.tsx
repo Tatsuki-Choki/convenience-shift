@@ -4,6 +4,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical } from 'lucide-react';
+import { getTimeSlotIndex, timeToMinutes } from '@/lib/time-constants';
 
 interface ShiftBarProps {
   id: string;
@@ -17,19 +18,6 @@ interface ShiftBarProps {
   onUpdate: (shiftId: number, startTime: string, endTime: string) => void;
   onResizeStart?: () => void;
   onResizeEnd?: () => void;
-}
-
-// 時間を分に変換
-function timeToMinutes(time: string): number {
-  const [hours, minutes] = time.split(':').map(Number);
-  return hours * 60 + minutes;
-}
-
-// 分を時間文字列に変換
-function minutesToTime(minutes: number): string {
-  const hours = Math.floor(minutes / 60) % 24;
-  const mins = minutes % 60;
-  return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
 }
 
 export function ShiftBar({
@@ -46,10 +34,45 @@ export function ShiftBar({
   onResizeEnd,
 }: ShiftBarProps) {
   const [isResizing, setIsResizing] = useState<'left' | 'right' | null>(null);
-  const [resizeStartX, setResizeStartX] = useState(0);
   const [tempStartTime, setTempStartTime] = useState(startTime);
   const [tempEndTime, setTempEndTime] = useState(endTime);
   const barRef = useRef<HTMLDivElement>(null);
+  const tempStartTimeRef = useRef(tempStartTime);
+  const tempEndTimeRef = useRef(tempEndTime);
+  const rafRef = useRef<number | null>(null);
+  const pendingStartIndexRef = useRef<number | null>(null);
+  const pendingEndIndexRef = useRef<number | null>(null);
+  const cleanupResizeListenersRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    tempStartTimeRef.current = tempStartTime;
+  }, [tempStartTime]);
+
+  useEffect(() => {
+    tempEndTimeRef.current = tempEndTime;
+  }, [tempEndTime]);
+
+  const cleanupResizeListeners = useCallback(() => {
+    if (cleanupResizeListenersRef.current) {
+      cleanupResizeListenersRef.current();
+      cleanupResizeListenersRef.current = null;
+    }
+  }, []);
+
+  const cancelRaf = useCallback(() => {
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      cancelRaf();
+    };
+  }, [cancelRaf]);
+
+  useEffect(() => cleanupResizeListeners, [cleanupResizeListeners]);
 
   // ドラッグ可能設定
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -65,10 +88,10 @@ export function ShiftBar({
   });
 
   // 位置計算
-  const startIndex = timeSlots.findIndex((t) => t === startTime);
-  const endIndex = timeSlots.findIndex((t) => t === endTime);
-  const displayStartIndex = timeSlots.findIndex((t) => t === tempStartTime);
-  const displayEndIndex = timeSlots.findIndex((t) => t === tempEndTime);
+  const startIndex = Math.max(0, getTimeSlotIndex(startTime, timeSlots));
+  const endIndex = Math.max(startIndex, getTimeSlotIndex(endTime, timeSlots));
+  const displayStartIndex = Math.max(0, getTimeSlotIndex(tempStartTime, timeSlots));
+  const displayEndIndex = Math.max(displayStartIndex, getTimeSlotIndex(tempEndTime, timeSlots));
 
   const left = (isResizing ? displayStartIndex : startIndex) * cellWidth;
   const width = ((isResizing ? displayEndIndex : endIndex) - (isResizing ? displayStartIndex : startIndex)) * cellWidth;
@@ -83,69 +106,92 @@ export function ShiftBar({
   };
 
   // リサイズ開始
-  const handleResizeStart = useCallback((side: 'left' | 'right', e: React.MouseEvent) => {
+  const handleResizeStart = useCallback((side: 'left' | 'right', e: React.PointerEvent<HTMLDivElement>) => {
     e.stopPropagation();
     e.preventDefault();
+    if (e.currentTarget.setPointerCapture) {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    }
     setIsResizing(side);
-    setResizeStartX(e.clientX);
     setTempStartTime(startTime);
     setTempEndTime(endTime);
     onResizeStart?.();
-  }, [startTime, endTime, onResizeStart]);
 
-  // リサイズ中のマウス移動
-  useEffect(() => {
-    if (!isResizing) return;
+    cleanupResizeListeners();
 
-    const handleMouseMove = (e: MouseEvent) => {
-      const deltaX = e.clientX - resizeStartX;
+    const startX = e.clientX;
+    const currentStartIndex = Math.max(0, getTimeSlotIndex(startTime, timeSlots));
+    const currentEndIndex = Math.max(currentStartIndex, getTimeSlotIndex(endTime, timeSlots));
+    const minEndIndex = currentStartIndex + 4; // 最小2時間
+    const maxStartIndex = currentEndIndex - 4; // 最小2時間
+
+    const scheduleUpdate = () => {
+      if (rafRef.current !== null) return;
+        rafRef.current = requestAnimationFrame(() => {
+          rafRef.current = null;
+          if (pendingStartIndexRef.current !== null) {
+            setTempStartTime(timeSlots[pendingStartIndexRef.current]);
+            pendingStartIndexRef.current = null;
+          }
+          if (pendingEndIndexRef.current !== null) {
+            setTempEndTime(timeSlots[pendingEndIndexRef.current] || '24:00');
+            pendingEndIndexRef.current = null;
+          }
+        });
+    };
+
+    const handlePointerMove = (ev: PointerEvent) => {
+      const deltaX = ev.clientX - startX;
       const cellsMoved = Math.round(deltaX / cellWidth);
 
-      if (isResizing === 'left') {
-        const currentStartIndex = timeSlots.findIndex((t) => t === startTime);
+      if (side === 'left') {
         let newStartIndex = currentStartIndex + cellsMoved;
-
-        // 制限: 最小2時間（4セル）、最大制限なし（8時間超は残業として表示）
-        const currentEndIndex = timeSlots.findIndex((t) => t === endTime);
-        const maxStartIndex = currentEndIndex - 4;  // 最小2時間
-
         newStartIndex = Math.max(0, Math.min(maxStartIndex, newStartIndex));
-
         if (newStartIndex >= 0 && newStartIndex < timeSlots.length) {
-          setTempStartTime(timeSlots[newStartIndex]);
+          if (pendingStartIndexRef.current !== newStartIndex) {
+            pendingStartIndexRef.current = newStartIndex;
+            scheduleUpdate();
+          }
         }
       } else {
-        const currentEndIndex = timeSlots.findIndex((t) => t === endTime);
         let newEndIndex = currentEndIndex + cellsMoved;
-
-        // 制限: 最小2時間（4セル）、最大制限なし（8時間超は残業として表示）
-        const currentStartIndex = timeSlots.findIndex((t) => t === startTime);
-        const minEndIndex = currentStartIndex + 4;  // 最小2時間
-
         newEndIndex = Math.max(minEndIndex, Math.min(timeSlots.length, newEndIndex));
-
         if (newEndIndex > 0 && newEndIndex <= timeSlots.length) {
-          setTempEndTime(timeSlots[newEndIndex] || '24:00');
+          if (pendingEndIndexRef.current !== newEndIndex) {
+            pendingEndIndexRef.current = newEndIndex;
+            scheduleUpdate();
+          }
         }
       }
     };
 
-    const handleMouseUp = () => {
-      if (tempStartTime !== startTime || tempEndTime !== endTime) {
-        onUpdate(shiftId, tempStartTime, tempEndTime);
+    const handlePointerUp = () => {
+      cancelRaf();
+      if (pendingStartIndexRef.current !== null) {
+        setTempStartTime(timeSlots[pendingStartIndexRef.current]);
+        pendingStartIndexRef.current = null;
+      }
+      if (pendingEndIndexRef.current !== null) {
+        setTempEndTime(timeSlots[pendingEndIndexRef.current] || '24:00');
+        pendingEndIndexRef.current = null;
+      }
+      const latestStart = tempStartTimeRef.current;
+      const latestEnd = tempEndTimeRef.current;
+      if (latestStart !== startTime || latestEnd !== endTime) {
+        onUpdate(shiftId, latestStart, latestEnd);
       }
       setIsResizing(null);
       onResizeEnd?.();
+      cleanupResizeListeners();
     };
 
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+    document.addEventListener('pointermove', handlePointerMove);
+    document.addEventListener('pointerup', handlePointerUp);
+    cleanupResizeListenersRef.current = () => {
+      document.removeEventListener('pointermove', handlePointerMove);
+      document.removeEventListener('pointerup', handlePointerUp);
     };
-  }, [isResizing, resizeStartX, cellWidth, timeSlots, startTime, endTime, tempStartTime, tempEndTime, shiftId, onUpdate, onResizeEnd]);
+  }, [startTime, endTime, timeSlots, cellWidth, onResizeStart, onResizeEnd, onUpdate, shiftId, cleanupResizeListeners, cancelRaf]);
 
   // シフト時間の計算（8時間超で残業判定）
   const duration = timeToMinutes(isResizing ? tempEndTime : endTime) - timeToMinutes(isResizing ? tempStartTime : startTime);
@@ -166,52 +212,50 @@ export function ShiftBar({
         if (barRef) (barRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
       }}
       style={style}
-      className={`absolute top-1 bottom-1 rounded-lg flex items-center cursor-grab active:cursor-grabbing select-none transition-shadow overflow-hidden ${
+      className={`absolute top-0.5 bottom-0.5 flex items-center cursor-grab active:cursor-grabbing select-none transition-shadow ${
         isDragging ? 'shadow-lg' : ''
       } ${isResizing ? 'cursor-ew-resize' : ''}`}
       {...attributes}
       {...listeners}
     >
-      {/* 背景色のセグメント */}
-      <div className="absolute inset-0 flex">
-        {/* 通常勤務部分（青色） */}
-        <div
-          className="h-full bg-[#007AFF]"
-          style={{ width: `${normalWidthPercent}%` }}
-        />
-        {/* 残業部分（オレンジ色） - 8時間超過時のみ表示 */}
-        {displayOvertime && (
+      {/* バー本体 */}
+      <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-full rounded-md overflow-hidden pointer-events-none">
+        <div className="absolute inset-0 flex">
           <div
-            className="h-full bg-[#FF9500]"
-            style={{ width: `${overtimeWidthPercent}%` }}
+            className="h-full bg-[#007AFF]"
+            style={{ width: `${normalWidthPercent}%` }}
           />
-        )}
+          {displayOvertime && (
+            <div
+              className="h-full bg-[#FF9500]"
+              style={{ width: `${overtimeWidthPercent}%` }}
+            />
+          )}
+        </div>
+        <div
+          className={`absolute inset-0 rounded-md ${
+            displayOvertime
+              ? 'shadow-[0_0_0_1px_rgba(255,149,0,0.35)]'
+              : 'shadow-[0_0_0_1px_rgba(0,122,255,0.35)]'
+          }`}
+        />
       </div>
-
-      {/* 外枠のシャドウ */}
-      <div
-        className={`absolute inset-0 rounded-lg pointer-events-none ${
-          displayOvertime
-            ? 'shadow-[0_0_0_2px_rgba(255,149,0,0.3)]'
-            : 'shadow-[0_0_0_2px_rgba(0,122,255,0.3)]'
-        }`}
-      />
 
       {/* 左リサイズハンドル */}
       <div
-        className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-white/30 rounded-l-lg flex items-center justify-center z-10"
-        onMouseDown={(e) => handleResizeStart('left', e)}
+        className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-white/30 rounded-l-md flex items-center justify-center z-10 touch-none"
+        onPointerDown={(e) => handleResizeStart('left', e)}
       >
-        <div className="w-0.5 h-3 bg-white/50 rounded" />
+        <div className="absolute top-1/2 -translate-y-1/2 w-0.5 h-2 bg-white/60 rounded" />
       </div>
 
       {/* 中央コンテンツ */}
-      <div className="flex-1 flex items-center justify-center gap-1 px-3 min-w-0 z-10">
+      <div className="flex-1 flex items-center justify-center gap-1 px-2 min-w-0 z-10">
         <GripVertical className="w-3 h-3 text-white/70 flex-shrink-0" />
         <span className="text-[10px] text-white font-medium truncate">
           {isResizing ? tempStartTime : startTime}-{isResizing ? tempEndTime : endTime}
         </span>
-        {width > 100 && (
+        {width > 120 && (
           <span className="text-[9px] text-white/80 flex-shrink-0">
             ({hours}h{mins > 0 ? `${mins}m` : ''})
           </span>
@@ -220,10 +264,10 @@ export function ShiftBar({
 
       {/* 右リサイズハンドル */}
       <div
-        className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-white/30 rounded-r-lg flex items-center justify-center z-10"
-        onMouseDown={(e) => handleResizeStart('right', e)}
+        className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-white/30 rounded-r-md flex items-center justify-center z-10 touch-none"
+        onPointerDown={(e) => handleResizeStart('right', e)}
       >
-        <div className="w-0.5 h-3 bg-white/50 rounded" />
+        <div className="absolute top-1/2 -translate-y-1/2 w-0.5 h-2 bg-white/60 rounded" />
       </div>
     </div>
   );
@@ -243,8 +287,8 @@ export function ShiftBarOverlay({
   cellWidth: number;
   timeSlots: string[];
 }) {
-  const startIndex = timeSlots.findIndex((t) => t === startTime);
-  const endIndex = timeSlots.findIndex((t) => t === endTime);
+  const startIndex = Math.max(0, getTimeSlotIndex(startTime, timeSlots));
+  const endIndex = Math.max(startIndex, getTimeSlotIndex(endTime, timeSlots));
   const width = (endIndex - startIndex) * cellWidth;
 
   const duration = timeToMinutes(endTime) - timeToMinutes(startTime);
@@ -260,24 +304,22 @@ export function ShiftBarOverlay({
   return (
     <div
       style={{ width: `${width}px` }}
-      className="h-6 rounded-lg flex items-center justify-center px-2 shadow-lg relative overflow-hidden"
+      className="h-4 flex items-center justify-center px-2 shadow-lg relative"
     >
-      {/* 背景色のセグメント */}
-      <div className="absolute inset-0 flex">
-        {/* 通常勤務部分（青色） */}
-        <div
-          className="h-full bg-[#007AFF]"
-          style={{ width: `${normalWidthPercent}%` }}
-        />
-        {/* 残業部分（オレンジ色） */}
-        {isOvertime && (
+      <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-full rounded-md overflow-hidden">
+        <div className="absolute inset-0 flex">
           <div
-            className="h-full bg-[#FF9500]"
-            style={{ width: `${overtimeWidthPercent}%` }}
+            className="h-full bg-[#007AFF]"
+            style={{ width: `${normalWidthPercent}%` }}
           />
-        )}
+          {isOvertime && (
+            <div
+              className="h-full bg-[#FF9500]"
+              style={{ width: `${overtimeWidthPercent}%` }}
+            />
+          )}
+        </div>
       </div>
-      {/* コンテンツ */}
       <div className="relative z-10 flex items-center">
         <GripVertical className="w-3 h-3 text-white/70" />
         <span className="text-[10px] text-white font-medium ml-1">

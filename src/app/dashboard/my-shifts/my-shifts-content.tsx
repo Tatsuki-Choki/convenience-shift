@@ -556,7 +556,7 @@ export function MyShiftsContent({ user }: MyShiftsContentProps) {
               </div>
             ) : (
               <div className="space-y-2">
-                {shifts
+                {[...shifts]
                   .sort((a, b) => a.date.localeCompare(b.date))
                   .map((shift) => {
                     const workMinutes = calculateWorkMinutes(shift.startTime, shift.endTime);

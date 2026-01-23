@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { staff, availabilityPatterns } from '@/lib/db/schema';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, and } from 'drizzle-orm';
 import { getSession, canAccessStore } from '@/lib/auth';
 
 // 店舗全スタッフの勤務可能時間パターン一括取得
@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams;
     const storeId = searchParams.get('storeId');
+    const dayOfWeek = searchParams.get('dayOfWeek');
 
     if (!storeId) {
       return NextResponse.json({ error: 'storeIdは必須です' }, { status: 400 });
@@ -39,18 +40,31 @@ export async function GET(request: NextRequest) {
     const staffIds = staffList.map((s) => s.id);
 
     // 全スタッフの勤務可能時間パターンを一括取得
+    const conditions = [inArray(availabilityPatterns.staffId, staffIds)];
+    if (dayOfWeek !== null) {
+      const dayNum = parseInt(dayOfWeek, 10);
+      if (!Number.isNaN(dayNum)) {
+        conditions.push(eq(availabilityPatterns.dayOfWeek, dayNum));
+      }
+    }
+
     const patterns = await db
       .select()
       .from(availabilityPatterns)
-      .where(inArray(availabilityPatterns.staffId, staffIds));
+      .where(and(...conditions));
 
     // スタッフIDをキーとしたMapに変換
     const result: Record<number, typeof patterns> = {};
     for (const pattern of patterns) {
+      const normalizedPattern = {
+        ...pattern,
+        startTime: pattern.startTime.slice(0, 5),
+        endTime: pattern.endTime.slice(0, 5),
+      };
       if (!result[pattern.staffId]) {
         result[pattern.staffId] = [];
       }
-      result[pattern.staffId].push(pattern);
+      result[pattern.staffId].push(normalizedPattern);
     }
 
     return NextResponse.json(result);

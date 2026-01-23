@@ -3,13 +3,20 @@ import { db } from '@/lib/db';
 import { shifts, staff } from '@/lib/db/schema';
 import { eq, and, gte, lte } from 'drizzle-orm';
 import { requireAdmin, getSession, canAccessStore } from '@/lib/auth';
+import { handleApiError, ApiErrors } from '@/lib/api-error';
+
+const normalizeShiftTime = <T extends { startTime: string; endTime: string }>(shift: T) => ({
+  ...shift,
+  startTime: shift.startTime.slice(0, 5),
+  endTime: shift.endTime.slice(0, 5),
+});
 
 // シフト一覧取得
 export async function GET(request: NextRequest) {
   try {
     const session = await getSession();
     if (!session) {
-      return NextResponse.json({ error: 'ログインが必要です' }, { status: 401 });
+      throw ApiErrors.unauthorized();
     }
 
     const searchParams = request.nextUrl.searchParams;
@@ -19,14 +26,14 @@ export async function GET(request: NextRequest) {
     const staffId = searchParams.get('staffId');
 
     if (!storeId) {
-      return NextResponse.json({ error: '店舗IDが必要です' }, { status: 400 });
+      throw ApiErrors.badRequest('店舗IDが必要です');
     }
 
     const storeIdNum = parseInt(storeId);
 
     // 店舗アクセス権限チェック
     if (!canAccessStore(session, storeIdNum)) {
-      return NextResponse.json({ error: 'この店舗へのアクセス権限がありません' }, { status: 403 });
+      throw ApiErrors.forbidden();
     }
 
     // 条件を構築
@@ -60,10 +67,9 @@ export async function GET(request: NextRequest) {
       .leftJoin(staff, eq(shifts.staffId, staff.id))
       .where(and(...conditions));
 
-    return NextResponse.json(shiftList);
+    return NextResponse.json(shiftList.map(normalizeShiftTime));
   } catch (error) {
-    console.error('シフト一覧取得エラー:', error);
-    return NextResponse.json({ error: 'シフト一覧の取得に失敗しました' }, { status: 500 });
+    return handleApiError(error, 'GET /api/shifts');
   }
 }
 
@@ -77,18 +83,18 @@ export async function POST(request: NextRequest) {
 
     // 必須フィールドチェック
     if (!staffId || !storeId || !date || !startTime || !endTime) {
-      return NextResponse.json({ error: '必須フィールドが不足しています' }, { status: 400 });
+      throw ApiErrors.badRequest('必須フィールドが不足しています');
     }
 
     // 店舗アクセス権限チェック
     if (!canAccessStore(session, storeId)) {
-      return NextResponse.json({ error: 'この店舗へのアクセス権限がありません' }, { status: 403 });
+      throw ApiErrors.forbidden();
     }
 
     // スタッフの存在確認
     const [staffMember] = await db.select().from(staff).where(eq(staff.id, staffId));
     if (!staffMember) {
-      return NextResponse.json({ error: 'スタッフが見つかりません' }, { status: 404 });
+      throw ApiErrors.notFound('スタッフ');
     }
 
     const [newShift] = await db.insert(shifts).values({
@@ -100,13 +106,9 @@ export async function POST(request: NextRequest) {
       isHelpFromOtherStore: isHelpFromOtherStore || false,
     }).returning();
 
-    return NextResponse.json(newShift, { status: 201 });
+    return NextResponse.json(normalizeShiftTime(newShift), { status: 201 });
   } catch (error) {
-    console.error('シフト作成エラー:', error);
-    if (error instanceof Error && error.message === '管理者権限が必要です') {
-      return NextResponse.json({ error: error.message }, { status: 403 });
-    }
-    return NextResponse.json({ error: 'シフトの作成に失敗しました' }, { status: 500 });
+    return handleApiError(error, 'POST /api/shifts');
   }
 }
 
@@ -119,12 +121,12 @@ export async function PUT(request: NextRequest) {
     const { storeId, date, shifts: shiftData } = body;
 
     if (!storeId || !date || !Array.isArray(shiftData)) {
-      return NextResponse.json({ error: '必須フィールドが不足しています' }, { status: 400 });
+      throw ApiErrors.badRequest('必須フィールドが不足しています');
     }
 
     // 店舗アクセス権限チェック
     if (!canAccessStore(session, storeId)) {
-      return NextResponse.json({ error: 'この店舗へのアクセス権限がありません' }, { status: 403 });
+      throw ApiErrors.forbidden();
     }
 
     // 該当日のシフトを削除
@@ -168,12 +170,8 @@ export async function PUT(request: NextRequest) {
       .leftJoin(staff, eq(shifts.staffId, staff.id))
       .where(and(eq(shifts.storeId, storeId), eq(shifts.date, date)));
 
-    return NextResponse.json(updatedShifts);
+    return NextResponse.json(updatedShifts.map(normalizeShiftTime));
   } catch (error) {
-    console.error('シフト一括更新エラー:', error);
-    if (error instanceof Error && error.message === '管理者権限が必要です') {
-      return NextResponse.json({ error: error.message }, { status: 403 });
-    }
-    return NextResponse.json({ error: 'シフトの更新に失敗しました' }, { status: 500 });
+    return handleApiError(error, 'PUT /api/shifts');
   }
 }

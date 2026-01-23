@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { DashboardLayout, PageSection } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
@@ -12,122 +12,64 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
-import { format, addDays, subDays, getDay, parseISO } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import {
-  ChevronLeft,
-  ChevronRight,
-  ArrowLeft,
-  Save,
-  Trash2,
-  Clock,
-  AlertCircle,
-} from 'lucide-react';
-import type { SessionUser } from '@/lib/auth';
-import { TIME_SLOTS, timeToMinutes, addHoursToTime, DEFAULT_SHIFT } from '@/lib/time-constants';
-import { AutoAssignButton } from '@/components/shifts/auto-assign-button';
+import { ArrowLeft, AlertCircle } from 'lucide-react';
+import { TIME_SLOTS, timeToMinutes } from '@/lib/time-constants';
 import { AutoAssignPreviewDialog } from '@/components/shifts/auto-assign-preview';
 import { ApiKeySettingsDialog } from '@/components/shifts/api-key-settings';
 import { useGeminiApi } from '@/hooks/use-gemini-api';
-import { proposeShifts, applyProposedShifts, type ShiftProposalResult } from '@/lib/auto-assign/shift-proposer';
 import {
   DndContext,
-  DragEndEvent,
   DragOverlay,
-  DragStartEvent,
-  MouseSensor,
-  TouchSensor,
-  useSensor,
-  useSensors,
   pointerWithin,
 } from '@dnd-kit/core';
 import { restrictToHorizontalAxis } from '@dnd-kit/modifiers';
 import { ShiftBar, ShiftBarOverlay } from '@/components/shifts/shift-bar';
 
-interface Store {
-  id: number;
-  name: string;
-}
+import type { DailyShiftContentProps } from './types';
+import {
+  useShiftData,
+  useShiftUtils,
+  useShiftEditing,
+  useShiftDrag,
+  useAutoAssign,
+} from './hooks';
+import {
+  ShiftEditDialog,
+  DateNavigation,
+  LoadingSkeleton,
+  ShiftLegend,
+} from './components';
 
-interface Staff {
-  id: number;
-  name: string;
-  role: string;
-  employmentType: string;
-  storeId: number;
-}
-
-interface Shift {
-  id: number;
-  staffId: number;
-  storeId: number;
-  date: string;
-  startTime: string;
-  endTime: string;
-  staffName: string | null;
-  staffRole: string | null;
-  staffEmploymentType: string | null;
-}
-
-interface ShiftRequirement {
-  id: number;
-  storeId: number;
-  dayOfWeek: number;
-  timeSlot: string;
-  requiredCount: number;
-}
-
-interface AvailabilityPattern {
-  id: number;
-  staffId: number;
-  dayOfWeek: number;
-  startTime: string;
-  endTime: string;
-}
-
-interface DailyShiftContentProps {
-  user: SessionUser;
-  date: string;
-  initialStoreId?: number;
-}
-
-const dayOfWeekLabels = ['日', '月', '火', '水', '木', '金', '土'];
-
-// ローディングスケルトン
-const LoadingSkeleton = memo(function LoadingSkeleton() {
-  return (
-    <div className="space-y-2 animate-pulse">
-      <div className="h-8 bg-[#E5E5EA] rounded-xl w-full" />
-      {[...Array(10)].map((_, i) => (
-        <div key={i} className="h-6 bg-[#E5E5EA] rounded-xl" />
-      ))}
-    </div>
-  );
-});
+const formatTime = (time: string) => {
+  if (!time) return '09:00';
+  return time.substring(0, 5);
+};
 
 export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftContentProps) {
   const router = useRouter();
-  const [stores, setStores] = useState<Store[]>([]);
-  const [selectedStoreId, setSelectedStoreId] = useState<string>(
-    initialStoreId?.toString() || ''
-  );
-  const [staffList, setStaffList] = useState<Staff[]>([]);
-  const [shifts, setShifts] = useState<Shift[]>([]);
-  const [requirements, setRequirements] = useState<ShiftRequirement[]>([]);
-  const [availabilityMap, setAvailabilityMap] = useState<Map<number, AvailabilityPattern[]>>(
-    new Map()
-  );
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [apiKeyDialogOpen, setApiKeyDialogOpen] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [crossStoreOpen, setCrossStoreOpen] = useState(false);
+  const [crossStoreLoading, setCrossStoreLoading] = useState(false);
+  const [crossStoreError, setCrossStoreError] = useState<string | null>(null);
+  const [crossStoreCandidates, setCrossStoreCandidates] = useState<
+    {
+      staffId: number;
+      name: string;
+      storeId: number;
+      storeName: string;
+      availableFrom: string;
+      availableTo: string;
+      coverSlots: string[];
+    }[]
+  >([]);
+  const [crossStoreCoverage, setCrossStoreCoverage] = useState<Record<string, number>>({});
+  const [crossStoreChecked, setCrossStoreChecked] = useState(false);
+  const [requestingStaffId, setRequestingStaffId] = useState<number | null>(null);
+  const [requestedStaffIds, setRequestedStaffIds] = useState<Set<number>>(new Set());
 
-  // 自動割り振り用
   const {
     apiKey,
     isApiKeySet,
@@ -135,468 +77,440 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
     setApiKey,
     clearApiKey,
   } = useGeminiApi();
-  const [apiKeyDialogOpen, setApiKeyDialogOpen] = useState(false);
-  const [autoAssignLoading, setAutoAssignLoading] = useState(false);
-  const [autoAssignPreviewOpen, setAutoAssignPreviewOpen] = useState(false);
-  const [autoAssignResult, setAutoAssignResult] = useState<ShiftProposalResult | null>(null);
-  const [isApplyingShifts, setIsApplyingShifts] = useState(false);
 
-  // シフト編集用
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [editingStaffId, setEditingStaffId] = useState<number | null>(null);
-  const [editStartTime, setEditStartTime] = useState('09:00');
-  const [editEndTime, setEditEndTime] = useState('17:00');
+  const {
+    stores,
+    selectedStoreId,
+    setSelectedStoreId,
+    staffList,
+    shifts,
+    requirements,
+    availabilityMap,
+    loading,
+    dayOfWeek,
+    fetchShifts,
+  } = useShiftData({ user, date, initialStoreId });
 
-  // ドラッグ&ドロップ用
-  const [cellWidth, setCellWidth] = useState(40);
-  const [activeShift, setActiveShift] = useState<{
-    shiftId: number;
-    staffId: number;
-    startTime: string;
-    endTime: string;
-  } | null>(null);
-  const [isResizing, setIsResizing] = useState(false);
-  const tableRef = useRef<HTMLTableElement>(null);
+  const {
+    getStaffAvailability,
+    isStaffAvailable,
+    getShiftForStaff,
+    isOvertimeShift,
+    getRequiredCountForSlot,
+    getActualCountForSlot,
+  } = useShiftUtils({ availabilityMap, shifts, requirements, dayOfWeek });
 
-  // ドラッグセンサー設定
-  const mouseSensor = useSensor(MouseSensor, {
-    activationConstraint: {
-      distance: 5, // 5px以上移動で発火
-    },
+  const {
+    editDialogOpen,
+    setEditDialogOpen,
+    editingStaffId,
+    editStartTime,
+    setEditStartTime,
+    editEndTime,
+    setEditEndTime,
+    saving,
+    editingStaff,
+    editingAvailability,
+    handleOpenEditDialog,
+    handleSaveShift,
+    handleDeleteShift,
+  } = useShiftEditing({
+    staffList,
+    selectedStoreId,
+    date,
+    getShiftForStaff,
+    getStaffAvailability,
+    fetchShifts,
   });
-  const touchSensor = useSensor(TouchSensor, {
-    activationConstraint: {
-      delay: 200, // 200ms長押しで発火
-      tolerance: 5,
-    },
-  });
-  const sensors = useSensors(mouseSensor, touchSensor);
+
+  const {
+    cellWidth,
+    activeShift,
+    setIsResizing,
+    tableRef,
+    sensors,
+    handleDragStart,
+    handleDragEnd,
+    handleShiftResize,
+  } = useShiftDrag({ loading, fetchShifts });
+
+  const {
+    autoAssignLoading,
+    autoAssignPreviewOpen,
+    setAutoAssignPreviewOpen,
+    autoAssignResult,
+    isApplyingShifts,
+    handleAutoAssign,
+    handleRecalculate,
+    handleApplyShifts,
+  } = useAutoAssign({ date, selectedStoreId, fetchShifts });
 
   const currentDate = parseISO(date);
-  const dayOfWeek = getDay(currentDate);
+  const selectedStoreIdNum = selectedStoreId ? parseInt(selectedStoreId, 10) : 0;
+  const canCheckCrossStore = user.role !== 'staff';
 
-  const fetchStores = useCallback(async () => {
+  const shortageSlots = useMemo(() => {
+    return TIME_SLOTS.map((time, idx) => {
+      const next = TIME_SLOTS[idx + 1];
+      if (!next) return null;
+      const required = getRequiredCountForSlot(time);
+      const actual = getActualCountForSlot(time);
+      const shortage = required - actual;
+      if (required === 0 || shortage <= 0) return null;
+      return { startTime: time, endTime: next, shortage };
+    }).filter(Boolean) as { startTime: string; endTime: string; shortage: number }[];
+  }, [getRequiredCountForSlot, getActualCountForSlot]);
+
+  const handleResetShifts = useCallback(async () => {
+    if (!selectedStoreIdNum || resetting) return;
+    const confirmed = window.confirm('この日のシフトをすべて削除します。よろしいですか？');
+    if (!confirmed) return;
+
+    setResetting(true);
     try {
-      const res = await fetch('/api/stores');
-      if (res.ok) {
-        const data = await res.json();
-        setStores(data);
-        if (!selectedStoreId && data.length > 0) {
-          const defaultStore = user.storeId
-            ? data.find((s: Store) => s.id === user.storeId)
-            : data[0];
-          setSelectedStoreId((defaultStore?.id || data[0].id).toString());
-        }
-      }
-    } catch (error) {
-      console.error('店舗取得エラー:', error);
-    }
-  }, [user.storeId, selectedStoreId]);
-
-  const fetchStaff = useCallback(async () => {
-    try {
-      // スタッフ一覧と勤務可能時間を並列取得（N+1解消）
-      const [staffRes, availRes] = await Promise.all([
-        fetch(`/api/staff?storeId=${selectedStoreId}`),
-        fetch(`/api/availability?storeId=${selectedStoreId}`),
-      ]);
-
-      if (staffRes.ok) {
-        const staffData = await staffRes.json();
-        setStaffList(staffData);
-      }
-
-      if (availRes.ok) {
-        const availData: Record<string, AvailabilityPattern[]> = await availRes.json();
-        const availMap = new Map<number, AvailabilityPattern[]>();
-        for (const [staffId, patterns] of Object.entries(availData)) {
-          availMap.set(parseInt(staffId), patterns);
-        }
-        setAvailabilityMap(availMap);
-      }
-    } catch (error) {
-      console.error('スタッフ取得エラー:', error);
-    }
-  }, [selectedStoreId]);
-
-  const fetchShifts = useCallback(async () => {
-    try {
-      const res = await fetch(
-        `/api/shifts?storeId=${selectedStoreId}&startDate=${date}&endDate=${date}`
-      );
-      if (res.ok) {
-        const data = await res.json();
-        setShifts(data);
-      }
-    } catch (error) {
-      console.error('シフト取得エラー:', error);
-    }
-  }, [selectedStoreId, date]);
-
-  const fetchRequirements = useCallback(async () => {
-    try {
-      const res = await fetch(
-        `/api/shift-requirements?storeId=${selectedStoreId}&dayOfWeek=${dayOfWeek}`
-      );
-      if (res.ok) {
-        const data = await res.json();
-        setRequirements(data);
-      }
-    } catch (error) {
-      console.error('必要人数取得エラー:', error);
-    }
-  }, [selectedStoreId, dayOfWeek]);
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    await Promise.all([fetchStaff(), fetchShifts(), fetchRequirements()]);
-    setLoading(false);
-  }, [fetchStaff, fetchShifts, fetchRequirements]);
-
-  useEffect(() => {
-    fetchStores();
-  }, [fetchStores]);
-
-  useEffect(() => {
-    if (selectedStoreId) {
-      fetchData();
-    }
-  }, [selectedStoreId, date, fetchData]);
-
-  const getStaffAvailability = useCallback((staffId: number) => {
-    const patterns = availabilityMap.get(staffId) || [];
-    return patterns.find((p) => p.dayOfWeek === dayOfWeek);
-  }, [availabilityMap, dayOfWeek]);
-
-  const isStaffAvailable = useCallback((staffId: number, time: string) => {
-    const availability = getStaffAvailability(staffId);
-    if (!availability) return false;
-
-    const timeMin = timeToMinutes(time);
-    const startMin = timeToMinutes(availability.startTime);
-    const endMin = timeToMinutes(availability.endTime);
-
-    return timeMin >= startMin && timeMin < endMin;
-  }, [getStaffAvailability]);
-
-  const getShiftForStaff = useCallback((staffId: number) => {
-    return shifts.find((s) => s.staffId === staffId);
-  }, [shifts]);
-
-  const isTimeInShift = useCallback((staffId: number, time: string) => {
-    const shift = getShiftForStaff(staffId);
-    if (!shift) return false;
-
-    const timeMin = timeToMinutes(time);
-    const startMin = timeToMinutes(shift.startTime);
-    const endMin = timeToMinutes(shift.endTime);
-
-    return timeMin >= startMin && timeMin < endMin;
-  }, [getShiftForStaff]);
-
-  // シフトが8時間超（残業）かどうかをチェック
-  const isOvertimeShift = useCallback((staffId: number) => {
-    const shift = getShiftForStaff(staffId);
-    if (!shift) return false;
-
-    const startMin = timeToMinutes(shift.startTime);
-    const endMin = timeToMinutes(shift.endTime);
-    const durationMinutes = endMin - startMin;
-
-    return durationMinutes > 8 * 60; // 8時間 = 480分
-  }, [getShiftForStaff]);
-
-  const getRequiredCountForSlot = useCallback((time: string) => {
-    const req = requirements.find((r) => r.timeSlot === time);
-    return req?.requiredCount || 0;
-  }, [requirements]);
-
-  const getActualCountForSlot = useCallback((time: string) => {
-    return shifts.filter((s) => {
-      const timeMin = timeToMinutes(time);
-      const startMin = timeToMinutes(s.startTime);
-      const endMin = timeToMinutes(s.endTime);
-      return timeMin >= startMin && timeMin < endMin;
-    }).length;
-  }, [shifts]);
-
-  const handleOpenEditDialog = useCallback((staffId: number, clickedTime?: string) => {
-    const existingShift = getShiftForStaff(staffId);
-    const availability = getStaffAvailability(staffId);
-
-    setEditingStaffId(staffId);
-    if (existingShift) {
-      // 既存シフトはその時間を使用
-      setEditStartTime(existingShift.startTime);
-      setEditEndTime(existingShift.endTime);
-    } else if (clickedTime) {
-      // クリックした時間を開始時間、+3時間を終了時間に設定
-      setEditStartTime(clickedTime);
-      setEditEndTime(addHoursToTime(clickedTime, DEFAULT_SHIFT.duration));
-    } else if (availability) {
-      // 勤務可能時間を使用
-      setEditStartTime(availability.startTime);
-      setEditEndTime(availability.endTime);
-    } else {
-      // デフォルト時間を使用
-      setEditStartTime(DEFAULT_SHIFT.startTime);
-      setEditEndTime(DEFAULT_SHIFT.endTime);
-    }
-    setEditDialogOpen(true);
-  }, [getShiftForStaff, getStaffAvailability]);
-
-  const handleSaveShift = useCallback(async () => {
-    if (!editingStaffId) return;
-
-    setSaving(true);
-    try {
-      const existingShift = getShiftForStaff(editingStaffId);
-
-      if (existingShift) {
-        const res = await fetch(`/api/shifts/${existingShift.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            startTime: editStartTime,
-            endTime: editEndTime,
-          }),
-        });
-
-        if (res.ok) {
-          await fetchShifts();
-        }
-      } else {
-        const res = await fetch('/api/shifts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            staffId: editingStaffId,
-            storeId: parseInt(selectedStoreId),
-            date,
-            startTime: editStartTime,
-            endTime: editEndTime,
-          }),
-        });
-
-        if (res.ok) {
-          await fetchShifts();
-        }
-      }
-
-      setEditDialogOpen(false);
-    } catch (error) {
-      console.error('シフト保存エラー:', error);
-    } finally {
-      setSaving(false);
-    }
-  }, [editingStaffId, editStartTime, editEndTime, selectedStoreId, date, getShiftForStaff, fetchShifts]);
-
-  const handleDeleteShift = useCallback(async () => {
-    if (!editingStaffId) return;
-
-    const existingShift = getShiftForStaff(editingStaffId);
-    if (!existingShift) return;
-
-    setSaving(true);
-    try {
-      const res = await fetch(`/api/shifts/${existingShift.id}`, {
-        method: 'DELETE',
-      });
-
-      if (res.ok) {
-        await fetchShifts();
-        setEditDialogOpen(false);
-      }
-    } catch (error) {
-      console.error('シフト削除エラー:', error);
-    } finally {
-      setSaving(false);
-    }
-  }, [editingStaffId, getShiftForStaff, fetchShifts]);
-
-  const handlePrevDay = useCallback(() => {
-    router.push(
-      `/dashboard/shifts/${format(subDays(currentDate, 1), 'yyyy-MM-dd')}?storeId=${selectedStoreId}`
-    );
-  }, [router, currentDate, selectedStoreId]);
-
-  const handleNextDay = useCallback(() => {
-    router.push(
-      `/dashboard/shifts/${format(addDays(currentDate, 1), 'yyyy-MM-dd')}?storeId=${selectedStoreId}`
-    );
-  }, [router, currentDate, selectedStoreId]);
-
-  const handleBackToMonthly = useCallback(() => {
-    router.push('/dashboard/shifts');
-  }, [router]);
-
-  const handleStoreChange = useCallback((value: string) => {
-    setSelectedStoreId(value);
-  }, []);
-
-  // セル幅の測定
-  useEffect(() => {
-    const measureCellWidth = () => {
-      if (tableRef.current) {
-        const cell = tableRef.current.querySelector('[data-time-cell]');
-        if (cell) {
-          const rect = cell.getBoundingClientRect();
-          setCellWidth(rect.width);
-        }
-      }
-    };
-
-    measureCellWidth();
-    window.addEventListener('resize', measureCellWidth);
-    return () => window.removeEventListener('resize', measureCellWidth);
-  }, [loading]);
-
-  // ドラッグ開始ハンドラ
-  const handleDragStart = useCallback((event: DragStartEvent) => {
-    const { active } = event;
-    const data = active.data.current;
-    if (data?.type === 'shift') {
-      setActiveShift({
-        shiftId: data.shiftId,
-        staffId: data.staffId,
-        startTime: data.startTime,
-        endTime: data.endTime,
-      });
-    }
-  }, []);
-
-  // ドラッグ終了ハンドラ
-  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
-    const { active, delta } = event;
-    const data = active.data.current;
-
-    setActiveShift(null);
-
-    if (!data || data.type !== 'shift') return;
-
-    // 移動セル数を計算（30分単位でスナップ）
-    const cellsMoved = Math.round(delta.x / cellWidth);
-    if (cellsMoved === 0) return;
-
-    const { shiftId, startTime, endTime } = data;
-
-    // 新しい開始・終了時間を計算
-    const startIndex = TIME_SLOTS.findIndex((t) => t === startTime);
-    const endIndex = TIME_SLOTS.findIndex((t) => t === endTime);
-
-    let newStartIndex = startIndex + cellsMoved;
-    let newEndIndex = endIndex + cellsMoved;
-
-    // 範囲チェック
-    if (newStartIndex < 0) {
-      newStartIndex = 0;
-      newEndIndex = endIndex - startIndex;
-    }
-    if (newEndIndex > TIME_SLOTS.length) {
-      newEndIndex = TIME_SLOTS.length;
-      newStartIndex = TIME_SLOTS.length - (endIndex - startIndex);
-    }
-
-    const newStartTime = TIME_SLOTS[newStartIndex];
-    const newEndTime = TIME_SLOTS[newEndIndex] || '24:00';
-
-    if (newStartTime === startTime && newEndTime === endTime) return;
-
-    // シフト更新
-    try {
-      const res = await fetch(`/api/shifts/${shiftId}`, {
+      const res = await fetch('/api/shifts', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          startTime: newStartTime,
-          endTime: newEndTime,
+          storeId: selectedStoreIdNum,
+          date,
+          shifts: [],
         }),
       });
-
-      if (res.ok) {
-        await fetchShifts();
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || 'シフトのリセットに失敗しました');
       }
-    } catch (error) {
-      console.error('シフト更新エラー:', error);
-    }
-  }, [cellWidth, fetchShifts]);
-
-  // リサイズによるシフト更新ハンドラ
-  const handleShiftResize = useCallback(async (shiftId: number, newStartTime: string, newEndTime: string) => {
-    try {
-      const res = await fetch(`/api/shifts/${shiftId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          startTime: newStartTime,
-          endTime: newEndTime,
-        }),
-      });
-
-      if (res.ok) {
-        await fetchShifts();
-      }
-    } catch (error) {
-      console.error('シフト更新エラー:', error);
-    }
-  }, [fetchShifts]);
-
-  // 自動割り振りハンドラ
-  const handleAutoAssign = useCallback(async () => {
-    setAutoAssignLoading(true);
-    try {
-      const result = await proposeShifts(date, parseInt(selectedStoreId));
-      setAutoAssignResult(result);
-      setAutoAssignPreviewOpen(true);
-    } catch (error) {
-      console.error('自動割り振りエラー:', error);
-    } finally {
-      setAutoAssignLoading(false);
-    }
-  }, [date, selectedStoreId]);
-
-  const handleRecalculate = useCallback(async () => {
-    setAutoAssignLoading(true);
-    try {
-      const result = await proposeShifts(date, parseInt(selectedStoreId));
-      setAutoAssignResult(result);
-    } catch (error) {
-      console.error('再計算エラー:', error);
-    } finally {
-      setAutoAssignLoading(false);
-    }
-  }, [date, selectedStoreId]);
-
-  const handleApplyShifts = useCallback(async () => {
-    if (!autoAssignResult || autoAssignResult.proposedShifts.length === 0) return;
-
-    setIsApplyingShifts(true);
-    try {
-      await applyProposedShifts(date, parseInt(selectedStoreId), autoAssignResult.proposedShifts);
       await fetchShifts();
-      setAutoAssignPreviewOpen(false);
-      setAutoAssignResult(null);
     } catch (error) {
-      console.error('シフト適用エラー:', error);
+      console.error('シフトリセットエラー:', error);
+      alert(error instanceof Error ? error.message : 'シフトのリセットに失敗しました');
     } finally {
-      setIsApplyingShifts(false);
+      setResetting(false);
     }
-  }, [date, selectedStoreId, autoAssignResult, fetchShifts]);
+  }, [selectedStoreIdNum, resetting, date, fetchShifts]);
 
-  const editingStaff = useMemo(() =>
-    staffList.find((s) => s.id === editingStaffId),
-    [staffList, editingStaffId]
-  );
+  const handleCheckCrossStore = useCallback(async () => {
+    if (!canCheckCrossStore || !selectedStoreIdNum) return;
+    setCrossStoreLoading(true);
+    setCrossStoreError(null);
+    setCrossStoreChecked(true);
 
-  const editingAvailability = useMemo(() =>
-    editingStaffId ? getStaffAvailability(editingStaffId) : null,
-    [editingStaffId, getStaffAvailability]
-  );
+    try {
+      if (shortageSlots.length === 0) {
+        setCrossStoreCandidates([]);
+        setCrossStoreCoverage({});
+        return;
+      }
+
+      const otherStores = stores.filter((store) => store.id !== selectedStoreIdNum);
+      if (otherStores.length === 0) {
+        setCrossStoreCandidates([]);
+        setCrossStoreCoverage({});
+        if (user.role !== 'owner') {
+          setCrossStoreError('他店舗へのアクセス権限がないため確認できません');
+        }
+        return;
+      }
+
+      const results = await Promise.all(
+        otherStores.map(async (store) => {
+          const [staffRes, availRes, shiftsRes, timeOffRes] = await Promise.all([
+            fetch(`/api/staff?storeId=${store.id}`),
+            fetch(`/api/availability?storeId=${store.id}`),
+            fetch(`/api/shifts?storeId=${store.id}&startDate=${date}&endDate=${date}`),
+            fetch(`/api/time-off-requests?storeId=${store.id}`),
+          ]);
+
+          if (!staffRes.ok || !availRes.ok || !shiftsRes.ok || !timeOffRes.ok) {
+            return [];
+          }
+
+          const staffData: {
+            id: number;
+            name: string;
+            employmentType: 'employee' | 'part_time';
+            role: 'owner' | 'manager' | 'staff';
+            skillLevel: number | null;
+          }[] = await staffRes.json();
+          const availabilityData: Record<string, { dayOfWeek: number; startTime: string; endTime: string }[]> =
+            await availRes.json();
+          const shiftData: { staffId: number }[] = await shiftsRes.json();
+          const timeOffData: { staffId: number; date: string; status: string }[] = await timeOffRes.json();
+
+          const staffWithShift = new Set(shiftData.map((s) => s.staffId));
+          const staffWithOff = new Set(
+            timeOffData
+              .filter((t) => t.status === 'approved' && t.date === date)
+              .map((t) => t.staffId)
+          );
+
+          const candidates: {
+            staffId: number;
+            name: string;
+            storeId: number;
+            storeName: string;
+            availableFrom: string;
+            availableTo: string;
+            coverSlots: string[];
+            employmentType: 'employee' | 'part_time';
+            role: 'owner' | 'manager' | 'staff';
+            skillLevel: number | null;
+          }[] = [];
+
+          for (const staff of staffData) {
+            if (staffWithShift.has(staff.id) || staffWithOff.has(staff.id)) continue;
+
+            const patterns = availabilityData[String(staff.id)] ?? [];
+            const availability = patterns.find((p) => p.dayOfWeek === dayOfWeek);
+            if (!availability) continue;
+
+            const availableFrom = availability.startTime;
+            const availableTo = availability.endTime;
+            const availableFromMinutes = timeToMinutes(availableFrom);
+            const availableToMinutes = timeToMinutes(availableTo);
+
+            const coverSlots = shortageSlots
+              .filter((slot) => {
+                const slotStart = timeToMinutes(slot.startTime);
+                const slotEnd = timeToMinutes(slot.endTime);
+                return availableFromMinutes <= slotStart && availableToMinutes >= slotEnd;
+              })
+              .map((slot) => `${slot.startTime}-${slot.endTime}`);
+
+            if (coverSlots.length === 0) continue;
+
+            candidates.push({
+              staffId: staff.id,
+              name: staff.name,
+              storeId: store.id,
+              storeName: store.name,
+              availableFrom,
+              availableTo,
+              coverSlots,
+              employmentType: staff.employmentType,
+              role: staff.role,
+              skillLevel: staff.skillLevel,
+            });
+          }
+
+          return candidates;
+        })
+      );
+
+      const flatCandidates = results.flat();
+      const coverage: Record<string, number> = {};
+      for (const slot of shortageSlots) {
+        const key = `${slot.startTime}-${slot.endTime}`;
+        coverage[key] = 0;
+      }
+      for (const candidate of flatCandidates) {
+        for (const slot of candidate.coverSlots) {
+          coverage[slot] = (coverage[slot] ?? 0) + 1;
+        }
+      }
+
+      setCrossStoreCandidates(flatCandidates);
+      setCrossStoreCoverage(coverage);
+    } catch (error) {
+      console.error('他店舗スタッフ確認エラー:', error);
+      setCrossStoreError('他店舗スタッフの確認に失敗しました');
+    } finally {
+      setCrossStoreLoading(false);
+    }
+  }, [
+    canCheckCrossStore,
+    selectedStoreIdNum,
+    shortageSlots,
+    stores,
+    date,
+    dayOfWeek,
+  ]);
+
+  const handleRequestStaff = useCallback(async (candidate: {
+    staffId: number;
+    name: string;
+    storeId: number;
+    storeName: string;
+    coverSlots: string[];
+  }) => {
+    if (requestingStaffId !== null) return;
+
+    setRequestingStaffId(candidate.staffId);
+
+    try {
+      const currentStore = stores.find((s) => s.id === selectedStoreIdNum);
+      const response = await fetch('/api/cross-store-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fromStoreId: selectedStoreIdNum,
+          fromStoreName: currentStore?.name ?? '不明',
+          toStoreId: candidate.storeId,
+          toStoreName: candidate.storeName,
+          date,
+          staffId: candidate.staffId,
+          staffName: candidate.name,
+          shortageSlots: candidate.coverSlots,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || '要請の送信に失敗しました');
+      }
+
+      setRequestedStaffIds((prev) => new Set(prev).add(candidate.staffId));
+      alert(`${candidate.name}さんへの要請を送信しました`);
+    } catch (error) {
+      console.error('要請送信エラー:', error);
+      alert(error instanceof Error ? error.message : '要請の送信に失敗しました');
+    } finally {
+      setRequestingStaffId(null);
+    }
+  }, [requestingStaffId, stores, selectedStoreIdNum, date]);
+
+  const crossStoreBody = useMemo(() => (
+    <div className="space-y-3">
+      {!canCheckCrossStore && (
+        <div className="text-xs text-[#86868B]">
+          他店舗の確認はオーナーのみ利用できます
+        </div>
+      )}
+      {canCheckCrossStore && (
+        <>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleCheckCrossStore}
+            disabled={crossStoreLoading}
+            className="w-full"
+          >
+            {crossStoreLoading ? '確認中...' : '不足を確認する'}
+          </Button>
+
+          {shortageSlots.length === 0 && crossStoreChecked && (
+            <div className="text-xs text-[#34C759]">
+              不足時間帯はありません
+            </div>
+          )}
+
+          {crossStoreError && (
+            <div className="text-xs text-[#FF3B30]">
+              {crossStoreError}
+            </div>
+          )}
+
+          {crossStoreChecked && shortageSlots.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-xs font-medium text-[#1D1D1F]">
+                不足時間帯
+              </div>
+              <div className="space-y-1">
+                {shortageSlots.map((slot) => {
+                  const key = `${slot.startTime}-${slot.endTime}`;
+                  const cover = crossStoreCoverage[key] ?? 0;
+                  return (
+                    <div
+                      key={key}
+                      className="flex items-center justify-between rounded-lg bg-[#F5F5F7] px-2 py-1 text-xs"
+                    >
+                      <span className="text-[#1D1D1F]">
+                        {key}
+                      </span>
+                      <span className="text-[#86868B]">
+                        不足 {slot.shortage} / 候補 {cover}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {crossStoreChecked && (
+            <div className="space-y-2">
+              <div className="text-xs font-medium text-[#1D1D1F]">
+                候補スタッフ
+              </div>
+              {crossStoreCandidates.length === 0 ? (
+                <div className="text-xs text-[#86868B]">
+                  候補が見つかりません
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
+                  {crossStoreCandidates.map((candidate) => (
+                    <div
+                      key={`${candidate.storeId}-${candidate.staffId}`}
+                      className="rounded-lg border border-[#E5E5EA] p-2 text-xs"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium text-[#1D1D1F]">
+                          {candidate.name}
+                        </span>
+                        <span className="text-[#86868B]">
+                          {candidate.storeName}
+                        </span>
+                      </div>
+                      <div className="text-[#86868B] mt-1">
+                        役職 {candidate.role === 'owner'
+                          ? 'オーナー'
+                          : candidate.role === 'manager'
+                            ? '店長'
+                            : 'スタッフ'}
+                        ・{candidate.employmentType === 'employee' ? '社員' : 'ﾊﾞｲﾄ'}
+                        ・スキル {candidate.skillLevel ?? 1}
+                      </div>
+                      <div className="text-[#86868B] mt-1">
+                        勤務可能 {candidate.availableFrom}〜{candidate.availableTo}
+                      </div>
+                      <div className="text-[#86868B] mt-1">
+                        対応可能 {candidate.coverSlots.join(', ')}
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleRequestStaff(candidate)}
+                        disabled={requestingStaffId !== null || requestedStaffIds.has(candidate.staffId)}
+                        className="w-full mt-2 text-xs"
+                      >
+                        {requestedStaffIds.has(candidate.staffId)
+                          ? '要請済み'
+                          : requestingStaffId === candidate.staffId
+                            ? '送信中...'
+                            : '要請を出す'}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  ), [
+    canCheckCrossStore,
+    crossStoreLoading,
+    handleCheckCrossStore,
+    shortageSlots,
+    crossStoreChecked,
+    crossStoreError,
+    crossStoreCoverage,
+    crossStoreCandidates,
+    handleRequestStaff,
+    requestingStaffId,
+    requestedStaffIds,
+  ]);
+
+  const handleBackToMonthly = () => {
+    router.push('/dashboard/shifts');
+  };
 
   const storeSelector = useMemo(() => {
     if (user.role !== 'owner') return null;
     return (
-      <Select value={selectedStoreId} onValueChange={handleStoreChange}>
+      <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
         <SelectTrigger className="w-[180px] border-[#E5E5EA] bg-white">
           <SelectValue placeholder="店舗を選択" />
         </SelectTrigger>
@@ -609,25 +523,21 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
         </SelectContent>
       </Select>
     );
-  }, [user.role, selectedStoreId, stores, handleStoreChange]);
-
-  const backButton = useMemo(() => (
-    <Button
-      variant="outline"
-      onClick={handleBackToMonthly}
-      className="rounded-xl border-[#E5E5EA] hover:bg-[#F5F5F7]"
-    >
-      <ArrowLeft className="w-4 h-4 mr-2" />
-      月別サマリー
-    </Button>
-  ), [handleBackToMonthly]);
+  }, [user.role, selectedStoreId, stores, setSelectedStoreId]);
 
   const actions = useMemo(() => (
     <div className="flex items-center gap-3">
-      {backButton}
+      <Button
+        variant="outline"
+        onClick={handleBackToMonthly}
+        className="rounded-xl border-[#E5E5EA] hover:bg-[#F5F5F7]"
+      >
+        <ArrowLeft className="w-4 h-4 mr-2" />
+        月別サマリー
+      </Button>
       {storeSelector}
     </div>
-  ), [backButton, storeSelector]);
+  ), [storeSelector]);
 
   return (
     <DashboardLayout
@@ -636,52 +546,20 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
       description="スタッフごとのシフトを編集"
       actions={actions}
     >
-      {/* 日付ナビゲーション */}
-      <PageSection className="mb-6">
-        <div className="flex items-center justify-between">
-          <Button
-            variant="outline"
-            onClick={handlePrevDay}
-            className="rounded-xl border-[#E5E5EA] hover:bg-[#F5F5F7]"
-          >
-            <ChevronLeft className="w-4 h-4 mr-1" />
-            前日
-          </Button>
-          <div className="flex items-center gap-4">
-            <h2 className="text-xl font-semibold text-[#1D1D1F]">
-              {format(currentDate, 'yyyy年M月d日', { locale: ja })}
-              <span
-                className={`ml-2 ${
-                  dayOfWeek === 0
-                    ? 'text-[#FF3B30]'
-                    : dayOfWeek === 6
-                    ? 'text-[#007AFF]'
-                    : 'text-[#86868B]'
-                }`}
-              >
-                ({dayOfWeekLabels[dayOfWeek]})
-              </span>
-            </h2>
-            <AutoAssignButton
-              onAutoAssign={handleAutoAssign}
-              onOpenSettings={() => setApiKeyDialogOpen(true)}
-              isLoading={autoAssignLoading}
-              isApiKeySet={isApiKeySet}
-              disabled={loading}
-            />
-          </div>
-          <Button
-            variant="outline"
-            onClick={handleNextDay}
-            className="rounded-xl border-[#E5E5EA] hover:bg-[#F5F5F7]"
-          >
-            翌日
-            <ChevronRight className="w-4 h-4 ml-1" />
-          </Button>
-        </div>
-      </PageSection>
+      <DateNavigation
+        date={date}
+        dayOfWeek={dayOfWeek}
+        selectedStoreId={selectedStoreId}
+        loading={loading}
+        isApiKeySet={isApiKeySet}
+        autoAssignLoading={autoAssignLoading}
+        onAutoAssign={handleAutoAssign}
+        onOpenSettings={() => setApiKeyDialogOpen(true)}
+        onResetShifts={handleResetShifts}
+        isResetting={resetting}
+        canReset={!!selectedStoreIdNum}
+      />
 
-      {/* シフト表 */}
       <PageSection>
         {loading ? (
           <LoadingSkeleton />
@@ -693,169 +571,229 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
             modifiers={[restrictToHorizontalAxis]}
             collisionDetection={pointerWithin}
           >
-            <div className="overflow-x-auto">
-              <table ref={tableRef} className="w-full min-w-[1200px]">
-                <thead>
-                  <tr className="border-b border-[#E5E5EA]">
-                    <th className="sticky left-0 bg-white p-1 text-left text-xs font-medium text-[#86868B] w-[100px] z-[60]">
-                      名前
-                    </th>
-                    <th className="sticky left-[100px] bg-white p-1 text-left text-xs font-medium text-[#86868B] w-[50px] z-[60] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]">
-                      役職
-                    </th>
-                    {TIME_SLOTS.map((time) => (
-                      <th
-                        key={time}
-                        data-time-cell
-                        className="p-1 text-center text-xs font-normal text-[#86868B] min-w-[40px]"
-                      >
-                        {time.endsWith(':00') ? time.split(':')[0] : ''}
-                      </th>
-                    ))}
-                  </tr>
-                  {/* 必要人数行 */}
-                  <tr className="border-b border-[#E5E5EA] bg-[#F5F5F7]">
-                    <td colSpan={2} className="sticky left-0 bg-[#F5F5F7] p-1 text-xs text-[#86868B] z-[60] w-[150px] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]">
-                      必要人数
-                    </td>
-                    {TIME_SLOTS.map((time) => {
-                      const required = getRequiredCountForSlot(time);
-                      const actual = getActualCountForSlot(time);
-                      const status =
-                        actual >= required
-                          ? 'good'
-                          : actual >= required * 0.7
-                          ? 'warning'
-                          : 'danger';
-
-                      return (
-                        <td key={time} className="p-1 text-center">
-                          <div
-                            className={`text-xs font-medium ${
-                              status === 'good'
-                                ? 'text-[#34C759]'
-                                : status === 'warning'
-                                ? 'text-[#FF9500]'
-                                : 'text-[#FF3B30]'
-                            }`}
+            <div className="flex flex-col gap-4 lg:flex-row">
+              <div className="flex-1 min-w-0">
+                <div className="overflow-x-auto relative z-0">
+                  <table ref={tableRef} className="w-full min-w-[1200px] border-collapse">
+                    <thead>
+                      <tr className="border-b border-[#E5E5EA]">
+                        <th className="sticky left-0 bg-white p-1 text-left text-xs font-medium text-[#86868B] w-[150px] z-[20] border-r border-[#E5E5EA]">
+                          名前 / 役職
+                        </th>
+                        {TIME_SLOTS.map((time) => (
+                          <th
+                            key={time}
+                            data-time-cell
+                            className="p-1 text-center text-xs font-normal text-[#86868B] min-w-[40px]"
                           >
-                            {actual}/{required}
-                          </div>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                </thead>
-                <tbody>
-                  {staffList.map((staffMember) => {
-                    const availability = getStaffAvailability(staffMember.id);
-                    const shift = getShiftForStaff(staffMember.id);
-                    const isOvertime = isOvertimeShift(staffMember.id);
-
-                    return (
-                      <tr
-                        key={staffMember.id}
-                        className="border-b border-[#E5E5EA] hover:bg-[#F5F5F7]/50 transition-colors"
-                      >
-                        {/* 名前セル */}
-                        <td
-                          className="sticky left-0 bg-white p-1 z-[60] w-[100px] cursor-pointer"
-                          onClick={() => handleOpenEditDialog(staffMember.id)}
-                        >
-                          <div className="flex items-center gap-1">
-                            <span className="text-xs font-medium text-[#1D1D1F] truncate">
-                              {staffMember.name}
-                            </span>
-                            {!availability && (
-                              <AlertCircle className="w-3 h-3 text-[#FF3B30] flex-shrink-0" />
-                            )}
-                          </div>
-                        </td>
-                        {/* 役職セル - 右側にシャドウを追加してシフトバーが透けないようにする */}
-                        <td
-                          className="sticky left-[100px] bg-white p-1 z-[60] w-[50px] cursor-pointer shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]"
-                          onClick={() => handleOpenEditDialog(staffMember.id)}
-                        >
-                          <Badge
-                            variant="outline"
-                            className={`text-[10px] px-1 py-0 border-0 ${
-                              staffMember.role === 'manager'
-                                ? 'bg-[#007AFF]/10 text-[#007AFF]'
-                                : 'bg-[#F5F5F7] text-[#86868B]'
-                            }`}
-                          >
-                            {staffMember.employmentType === 'employee'
-                              ? '社員'
-                              : 'ﾊﾞｲﾄ'}
-                          </Badge>
-                        </td>
-                        {/* 時間スロットセル - relativeでShiftBarの親として機能 */}
-                        <td
-                          colSpan={TIME_SLOTS.length}
-                          className="p-0 h-8 relative"
-                        >
-                          {/* 背景：勤務可能時間帯の表示 */}
-                          <div className="absolute inset-0 flex">
-                            {TIME_SLOTS.map((time) => {
-                              const isAvailable = isStaffAvailable(staffMember.id, time);
-                              return (
-                                <div
-                                  key={time}
-                                  className={`flex-1 h-full cursor-pointer transition-colors ${
-                                    isAvailable
-                                      ? 'bg-[#34C759]/20 hover:bg-[#34C759]/30'
-                                      : 'bg-[#F5F5F7] hover:bg-[#E5E5EA]'
-                                  }`}
-                                  onClick={() => handleOpenEditDialog(staffMember.id, time)}
-                                />
-                              );
-                            })}
-                          </div>
-                          {/* シフトバー（シフトがある場合のみ表示） */}
-                          {shift && (
-                            <ShiftBar
-                              id={`shift-${shift.id}`}
-                              shiftId={shift.id}
-                              staffId={staffMember.id}
-                              startTime={shift.startTime}
-                              endTime={shift.endTime}
-                              isOvertime={isOvertime}
-                              cellWidth={cellWidth}
-                              timeSlots={TIME_SLOTS}
-                              onUpdate={handleShiftResize}
-                              onResizeStart={() => setIsResizing(true)}
-                              onResizeEnd={() => setIsResizing(false)}
-                            />
-                          )}
-                        </td>
+                            {time.endsWith(':00') ? time.split(':')[0] : ''}
+                          </th>
+                        ))}
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                      <tr className="border-b border-[#E5E5EA] bg-[#F5F5F7]">
+                        <td colSpan={1} className="sticky left-0 bg-[#F5F5F7] p-1 text-xs text-[#86868B] z-[20] w-[150px] border-r border-[#E5E5EA]">
+                          必要人数
+                        </td>
+                        {TIME_SLOTS.map((time) => {
+                          const required = getRequiredCountForSlot(time);
+                          const actual = getActualCountForSlot(time);
+                          if (required === 0) {
+                            return (
+                              <td key={time} className="p-1 text-center">
+                                <div className="text-xs font-medium text-[#D2D2D7]">未設定</div>
+                              </td>
+                            );
+                          }
+                          const status =
+                            actual >= required
+                              ? 'good'
+                              : actual >= required * 0.7
+                                ? 'warning'
+                                : 'danger';
+
+                          return (
+                            <td key={time} className="p-1 text-center">
+                              <div
+                                className={`text-xs font-medium ${status === 'good'
+                                  ? 'text-[#34C759]'
+                                  : status === 'warning'
+                                    ? 'text-[#FF9500]'
+                                    : 'text-[#FF3B30]'
+                                  }`}
+                              >
+                                {actual}/{required}
+                              </div>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {staffList.map((staffMember) => {
+                        const availability = getStaffAvailability(staffMember.id);
+                        const shift = getShiftForStaff(staffMember.id);
+                        const isOvertime = isOvertimeShift(staffMember.id);
+
+                        return (
+                          <tr
+                            key={staffMember.id}
+                            className="border-b border-[#E5E5EA] hover:bg-[#F5F5F7]/50 transition-colors"
+                          >
+                            <td
+                              className="sticky left-0 bg-white p-1 z-[20] w-[150px] cursor-pointer border-r border-[#E5E5EA]"
+                              onClick={() => handleOpenEditDialog(staffMember.id)}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-xs font-medium text-[#1D1D1F] truncate">
+                                      {staffMember.name}
+                                    </span>
+                                    {!availability && (
+                                      <AlertCircle className="w-3 h-3 text-[#FF3B30] flex-shrink-0" />
+                                    )}
+                                  </div>
+                                  <span className="text-[10px] text-[#86868B]">
+                                    {staffMember.role === 'owner'
+                                      ? 'オーナー'
+                                      : staffMember.role === 'manager'
+                                        ? '店長'
+                                        : 'スタッフ'}
+                                  </span>
+                                </div>
+                                <Badge
+                                  variant="outline"
+                                  className={`text-[10px] px-1 py-0 border-0 ${
+                                    staffMember.role === 'manager'
+                                      ? 'bg-[#007AFF]/10 text-[#007AFF]'
+                                      : 'bg-[#F5F5F7] text-[#86868B]'
+                                  }`}
+                                >
+                                  {staffMember.employmentType === 'employee' ? '社員' : 'ﾊﾞｲﾄ'}
+                                </Badge>
+                              </div>
+                            </td>
+                            <td
+                              colSpan={TIME_SLOTS.length}
+                              className="p-0 h-5 relative"
+                            >
+                              <div className="absolute inset-0 flex">
+                                {TIME_SLOTS.map((time) => {
+                                  const isAvailable = isStaffAvailable(staffMember.id, time);
+                                  return (
+                                    <div
+                                      key={time}
+                                      className={`flex-1 h-full cursor-pointer transition-colors ${isAvailable
+                                        ? 'bg-[#34C759]/20 hover:bg-[#34C759]/30'
+                                        : 'bg-[#F5F5F7] hover:bg-[#E5E5EA]'
+                                        }`}
+                                      onClick={() => handleOpenEditDialog(staffMember.id, time)}
+                                    />
+                                  );
+                                })}
+                              </div>
+                              {shift && (
+                                <ShiftBar
+                                  id={`shift-${shift.id}`}
+                                  shiftId={shift.id}
+                                  staffId={staffMember.id}
+                                  startTime={formatTime(shift.startTime)}
+                                  endTime={formatTime(shift.endTime)}
+                                  isOvertime={isOvertime}
+                                  cellWidth={cellWidth}
+                                  timeSlots={TIME_SLOTS}
+                                  onUpdate={handleShiftResize}
+                                  onResizeStart={() => setIsResizing(true)}
+                                  onResizeEnd={() => setIsResizing(false)}
+                                />
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                <ShiftLegend />
+              </div>
+
+              <aside className="w-full shrink-0 lg:w-auto lg:relative">
+                <div className="lg:sticky lg:top-4">
+                  {/* デスクトップ: 右端タブ + スライドサイドバー */}
+                  <div className="hidden lg:block relative">
+                    {/* タブボタン（常に表示） */}
+                    {!crossStoreOpen && (
+                      <button
+                        type="button"
+                        onClick={() => setCrossStoreOpen(true)}
+                        className="flex items-center justify-center h-28 w-8 rounded-l-xl border border-[#E5E5EA] bg-[#F5F5F7] text-[11px] text-[#1D1D1F] hover:bg-white transition-colors"
+                        style={{ writingMode: 'vertical-rl' }}
+                      >
+                        他店舗スタッフ
+                      </button>
+                    )}
+                    {/* 開いた時のパネル */}
+                    {crossStoreOpen && (
+                      <div className="w-80 rounded-xl border border-[#E5E5EA] bg-white p-4 shadow-sm">
+                        <button
+                          type="button"
+                          onClick={() => setCrossStoreOpen(false)}
+                          className="w-full flex items-center justify-between text-left"
+                        >
+                          <div>
+                            <p className="text-xs text-[#86868B]">タブ</p>
+                            <p className="text-sm font-semibold text-[#1D1D1F]">
+                              他店舗スタッフで充足確認
+                            </p>
+                          </div>
+                          <span className="text-xs text-[#86868B]">閉じる</span>
+                        </button>
+                        <div className="mt-3">
+                          {crossStoreBody}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* モバイル: 従来の開閉表示 */}
+                  <div className="lg:hidden rounded-xl border border-[#E5E5EA] bg-white p-4">
+                    {!crossStoreOpen ? (
+                      <button
+                        type="button"
+                        onClick={() => setCrossStoreOpen(true)}
+                        className="w-full flex items-center justify-between rounded-full border border-[#E5E5EA] bg-[#F5F5F7] px-3 py-1 text-xs text-[#1D1D1F] hover:bg-white transition-colors"
+                      >
+                        <span>他店舗スタッフで充足確認</span>
+                        <span className="text-[#86868B]">開く</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setCrossStoreOpen(false)}
+                        className="w-full flex items-center justify-between text-left"
+                      >
+                        <div>
+                          <p className="text-xs text-[#86868B]">タブ</p>
+                          <p className="text-sm font-semibold text-[#1D1D1F]">
+                            他店舗スタッフで充足確認
+                          </p>
+                        </div>
+                        <span className="text-xs text-[#86868B]">閉じる</span>
+                      </button>
+                    )}
+                    <div
+                      className={`transition-all duration-300 ease-out overflow-hidden ${
+                        crossStoreOpen ? 'max-h-[720px] opacity-100 mt-3' : 'max-h-0 opacity-0 mt-0'
+                      }`}
+                    >
+                      {crossStoreBody}
+                    </div>
+                  </div>
+                </div>
+              </aside>
             </div>
 
-            {/* 凡例 */}
-            <div className="flex flex-wrap items-center gap-6 pt-4 mt-4 border-t border-[#E5E5EA]">
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-[#007AFF] rounded" />
-                <span className="text-sm text-[#86868B]">シフト（ドラッグで移動、端をドラッグでリサイズ）</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-[#FF9500] rounded" />
-                <span className="text-sm text-[#86868B]">残業（8h超）</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-[#34C759]/20 border border-[#34C759]/30 rounded" />
-                <span className="text-sm text-[#86868B]">勤務可能</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-[#F5F5F7] border border-[#E5E5EA] rounded" />
-                <span className="text-sm text-[#86868B]">勤務不可</span>
-              </div>
-            </div>
-
-            {/* ドラッグオーバーレイ */}
             <DragOverlay modifiers={[restrictToHorizontalAxis]}>
               {activeShift && (
                 <ShiftBarOverlay
@@ -873,97 +811,21 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
         )}
       </PageSection>
 
-      {/* シフト編集ダイアログ */}
-      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Clock className="w-5 h-5 text-[#007AFF]" />
-              {editingStaff?.name}さんのシフト
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            {editingAvailability ? (
-              <div className="p-3 bg-[#34C759]/10 rounded-xl">
-                <p className="text-sm text-[#34C759]">
-                  勤務可能時間: {editingAvailability.startTime} 〜 {editingAvailability.endTime}
-                </p>
-              </div>
-            ) : (
-              <div className="p-3 bg-[#FF3B30]/10 rounded-xl">
-                <p className="text-sm text-[#FF3B30] flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4" />
-                  この曜日は勤務可能時間が設定されていません
-                </p>
-              </div>
-            )}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium text-[#1D1D1F] mb-2 block">開始時間</label>
-                <Select value={editStartTime} onValueChange={setEditStartTime}>
-                  <SelectTrigger className="border-[#E5E5EA]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {TIME_SLOTS.map((time) => (
-                      <SelectItem key={time} value={time}>
-                        {time}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-[#1D1D1F] mb-2 block">終了時間</label>
-                <Select value={editEndTime} onValueChange={setEditEndTime}>
-                  <SelectTrigger className="border-[#E5E5EA]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {TIME_SLOTS.map((time) => (
-                      <SelectItem key={time} value={time}>
-                        {time}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </div>
-          <DialogFooter className="flex justify-between sm:justify-between">
-            {getShiftForStaff(editingStaffId || 0) && (
-              <Button
-                variant="outline"
-                onClick={handleDeleteShift}
-                disabled={saving}
-                className="text-[#FF3B30] hover:bg-[#FF3B30]/10 hover:text-[#FF3B30] border-[#E5E5EA]"
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                削除
-              </Button>
-            )}
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setEditDialogOpen(false)}
-                className="border-[#E5E5EA]"
-              >
-                キャンセル
-              </Button>
-              <Button
-                onClick={handleSaveShift}
-                disabled={saving}
-                className="bg-[#007AFF] hover:bg-[#0056b3] text-white"
-              >
-                <Save className="w-4 h-4 mr-2" />
-                {saving ? '保存中...' : '保存'}
-              </Button>
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ShiftEditDialog
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        editingStaff={editingStaff}
+        editingAvailability={editingAvailability}
+        editStartTime={editStartTime}
+        setEditStartTime={setEditStartTime}
+        editEndTime={editEndTime}
+        setEditEndTime={setEditEndTime}
+        saving={saving}
+        existingShift={editingStaffId ? getShiftForStaff(editingStaffId) : undefined}
+        onSave={handleSaveShift}
+        onDelete={handleDeleteShift}
+      />
 
-      {/* APIキー設定ダイアログ */}
       <ApiKeySettingsDialog
         open={apiKeyDialogOpen}
         onOpenChange={setApiKeyDialogOpen}
@@ -973,7 +835,6 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
         onClear={clearApiKey}
       />
 
-      {/* 自動割り振りプレビューダイアログ */}
       <AutoAssignPreviewDialog
         open={autoAssignPreviewOpen}
         onOpenChange={setAutoAssignPreviewOpen}

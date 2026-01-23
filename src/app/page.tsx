@@ -25,9 +25,11 @@ const demoUsers: DemoUser[] = [
 export default function LoginPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState<DemoUserKey | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleLogin = async (userKey: DemoUserKey) => {
     setIsLoading(userKey);
+    setErrorMessage(null);
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
@@ -37,9 +39,14 @@ export default function LoginPage() {
 
       if (response.ok) {
         router.push('/dashboard');
+        return;
       }
+
+      const data = await response.json().catch(() => null);
+      setErrorMessage(data?.error || 'ログインに失敗しました');
     } catch (error) {
       console.error('Login failed:', error);
+      setErrorMessage('ログインに失敗しました');
     } finally {
       setIsLoading(null);
     }
@@ -57,6 +64,11 @@ export default function LoginPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          {errorMessage && (
+            <p className="text-sm text-center text-[#FF3B30]">
+              {errorMessage}
+            </p>
+          )}
           <div className="space-y-2">
             <p className="text-sm font-medium text-[#1D1D1F]">管理者としてログイン</p>
             <div className="space-y-2">

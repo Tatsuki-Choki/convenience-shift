@@ -13,7 +13,7 @@ interface StaffApiResponse {
   name: string;
   hourlyRate: number;
   storeId: number;
-  employmentType: 'employee' | 'partTime';
+  employmentType: 'employee' | 'part_time';
 }
 
 interface AvailabilityApiResponse {
@@ -63,27 +63,11 @@ export async function collectAutoAssignData(
   date: string,
   storeId: number
 ): Promise<AutoAssignInput> {
-  const dayOfWeek = getDayOfWeek(date);
-
-  // 並列でAPIを呼び出し
-  const [staff, availabilities, timeOffRequests, requirements, existingShifts] =
-    await Promise.all([
-      fetchStaff(storeId),
-      fetchAvailabilities(storeId, dayOfWeek),
-      fetchTimeOffRequests(storeId),
-      fetchRequirements(storeId, dayOfWeek),
-      fetchExistingShifts(storeId, date),
-    ]);
-
-  return {
-    date,
-    dayOfWeek,
-    staff,
-    availabilities,
-    timeOffRequests,
-    requirements,
-    existingShifts,
-  };
+  const response = await fetch(`/api/auto-assign-input?storeId=${storeId}&date=${date}`);
+  if (!response.ok) {
+    throw new Error("自動割り振り入力の取得に失敗しました");
+  }
+  return await response.json();
 }
 
 // スタッフ一覧を取得
@@ -107,7 +91,7 @@ async function fetchAvailabilities(
   storeId: number,
   dayOfWeek: number
 ): Promise<AvailabilityPattern[]> {
-  const response = await fetch(`/api/availability?storeId=${storeId}`);
+  const response = await fetch(`/api/availability?storeId=${storeId}&dayOfWeek=${dayOfWeek}`);
   if (!response.ok) {
     throw new Error("勤務可能時間の取得に失敗しました");
   }
@@ -123,8 +107,8 @@ async function fetchAvailabilities(
         result.push({
           staffId: staffId,
           dayOfWeek: a.dayOfWeek,
-          startTime: a.startTime,
-          endTime: a.endTime,
+          startTime: a.startTime.slice(0, 5),
+          endTime: a.endTime.slice(0, 5),
         });
       }
     }
@@ -133,8 +117,10 @@ async function fetchAvailabilities(
 }
 
 // 休み希望を取得（指定日の承認済みのみ）
-async function fetchTimeOffRequests(storeId: number): Promise<TimeOffRequest[]> {
-  const response = await fetch(`/api/time-off-requests?storeId=${storeId}`);
+async function fetchTimeOffRequests(storeId: number, date: string): Promise<TimeOffRequest[]> {
+  const response = await fetch(
+    `/api/time-off-requests?storeId=${storeId}&startDate=${date}&endDate=${date}&status=approved`
+  );
   if (!response.ok) {
     // 休み希望が取得できなくても続行（エラーにしない）
     console.warn("休み希望の取得に失敗しました");
@@ -149,8 +135,8 @@ async function fetchTimeOffRequests(storeId: number): Promise<TimeOffRequest[]> 
     .map((t) => ({
       staffId: String(t.staffId),
       date: t.date,
-      startTime: t.startTime ?? undefined,
-      endTime: t.endTime ?? undefined,
+      startTime: t.startTime ? t.startTime.slice(0, 5) : undefined,
+      endTime: t.endTime ? t.endTime.slice(0, 5) : undefined,
       status: t.status,
     }));
 }
@@ -199,8 +185,8 @@ async function fetchExistingShifts(
     id: String(s.id),
     staffId: String(s.staffId),
     staffName: s.staffName || "不明",
-    startTime: s.startTime,
-    endTime: s.endTime,
+    startTime: s.startTime.slice(0, 5),
+    endTime: s.endTime.slice(0, 5),
   }));
 }
 
@@ -210,14 +196,14 @@ export function getAvailableStaff(
 ): {
   id: string;
   name: string;
-  employmentType: 'employee' | 'partTime';
+  employmentType: 'employee' | 'part_time';
   availableFrom: string;
   availableTo: string;
 }[] {
   const result: {
     id: string;
     name: string;
-    employmentType: 'employee' | 'partTime';
+    employmentType: 'employee' | 'part_time';
     availableFrom: string;
     availableTo: string;
   }[] = [];

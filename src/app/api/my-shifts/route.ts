@@ -4,6 +4,12 @@ import { shifts, staff, stores, timeOffRequests } from '@/lib/db/schema';
 import { eq, and, gte, lte } from 'drizzle-orm';
 import { getSession } from '@/lib/auth';
 
+const normalizeShiftTime = <T extends { startTime: string; endTime: string }>(shift: T) => ({
+  ...shift,
+  startTime: shift.startTime.slice(0, 5),
+  endTime: shift.endTime.slice(0, 5),
+});
+
 // 自分のシフト一覧取得
 export async function GET(request: NextRequest) {
   try {
@@ -72,7 +78,7 @@ export async function GET(request: NextRequest) {
       .where(eq(staff.id, session.id));
 
     return NextResponse.json({
-      shifts: myShifts,
+      shifts: myShifts.map(normalizeShiftTime),
       timeOffRequests: myTimeOffRequests,
       staffInfo,
     });

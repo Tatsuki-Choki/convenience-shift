@@ -15,24 +15,51 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const storeId = searchParams.get('storeId');
 
-    let query = db.select().from(staff);
-
     if (storeId) {
       const storeIdNum = parseInt(storeId);
       // 店舗アクセス権限チェック
       if (!canAccessStore(session, storeIdNum)) {
         return NextResponse.json({ error: 'この店舗へのアクセス権限がありません' }, { status: 403 });
       }
-      const staffList = await db.select().from(staff).where(eq(staff.storeId, storeIdNum));
+      const staffList = await db
+        .select({
+          id: staff.id,
+          storeId: staff.storeId,
+          name: staff.name,
+          employmentType: staff.employmentType,
+          role: staff.role,
+          skillLevel: staff.skillLevel,
+        })
+        .from(staff)
+        .where(eq(staff.storeId, storeIdNum));
       return NextResponse.json(staffList);
     }
 
     // オーナーは全店舗、それ以外は自店舗のみ
     if (session.role === 'owner') {
-      const staffList = await db.select().from(staff);
+      const staffList = await db
+        .select({
+          id: staff.id,
+          storeId: staff.storeId,
+          name: staff.name,
+          employmentType: staff.employmentType,
+          role: staff.role,
+          skillLevel: staff.skillLevel,
+        })
+        .from(staff);
       return NextResponse.json(staffList);
     } else if (session.storeId) {
-      const staffList = await db.select().from(staff).where(eq(staff.storeId, session.storeId));
+      const staffList = await db
+        .select({
+          id: staff.id,
+          storeId: staff.storeId,
+          name: staff.name,
+          employmentType: staff.employmentType,
+          role: staff.role,
+          skillLevel: staff.skillLevel,
+        })
+        .from(staff)
+        .where(eq(staff.storeId, session.storeId));
       return NextResponse.json(staffList);
     }
 

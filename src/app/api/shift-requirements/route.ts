@@ -38,7 +38,12 @@ export async function GET(request: NextRequest) {
       .from(shiftRequirements)
       .where(and(...conditions));
 
-    return NextResponse.json(requirements);
+    return NextResponse.json(
+      requirements.map((r) => ({
+        ...r,
+        timeSlot: r.timeSlot.slice(0, 5),
+      }))
+    );
   } catch (error) {
     console.error('シフト必要人数取得エラー:', error);
     return NextResponse.json({ error: 'シフト必要人数の取得に失敗しました' }, { status: 500 });
@@ -91,7 +96,12 @@ export async function PUT(request: NextRequest) {
         eq(shiftRequirements.dayOfWeek, dayOfWeek)
       ));
 
-    return NextResponse.json(updatedRequirements);
+    return NextResponse.json(
+      updatedRequirements.map((r) => ({
+        ...r,
+        timeSlot: r.timeSlot.slice(0, 5),
+      }))
+    );
   } catch (error) {
     console.error('シフト必要人数更新エラー:', error);
     if (error instanceof Error && error.message === '管理者権限が必要です') {

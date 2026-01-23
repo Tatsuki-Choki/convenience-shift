@@ -38,6 +38,16 @@ export function timeToMinutes(time: string): number {
 }
 
 /**
+ * TIME_SLOTS上のインデックスを取得（24:00は末尾扱い）
+ * @param time "HH:mm" 形式の時刻
+ * @param slots 参照するスロット配列（省略時はTIME_SLOTS）
+ */
+export function getTimeSlotIndex(time: string, slots: string[] = TIME_SLOTS): number {
+  if (time === '24:00') return slots.length;
+  return slots.findIndex((t) => t === time);
+}
+
+/**
  * 分を時刻文字列に変換
  * @param minutes 0:00からの経過分数
  * @returns "HH:mm" 形式の時刻

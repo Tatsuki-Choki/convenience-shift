@@ -115,8 +115,10 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { staffId, dates } = body;
 
-    // スタッフは自分の休み希望のみ作成可能
-    const targetStaffId = session.role === 'staff' ? session.id : staffId;
+    // スタッフは自分のみ。管理者も未指定なら自分に紐づける
+    const targetStaffId = session.role === 'staff'
+      ? session.id
+      : (staffId ?? session.id);
 
     if (!targetStaffId) {
       return NextResponse.json({ error: 'スタッフIDが必要です' }, { status: 400 });

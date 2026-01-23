@@ -248,9 +248,24 @@ export function RequirementsContent({ user }: RequirementsContentProps) {
   const [selectedStoreId, setSelectedStoreId] = useState<string>('');
   const [selectedDayOfWeek, setSelectedDayOfWeek] = useState<number>(1);
   const [requirements, setRequirements] = useState<Map<string, number>>(new Map());
+  const [baselineRequirements, setBaselineRequirements] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [hasChanges, setHasChanges] = useState(false);
+
+  const serializeRequirements = useCallback((map: Map<string, number>) => {
+    const entries = Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
+    return JSON.stringify(entries);
+  }, []);
+
+  const requirementsKey = useMemo(
+    () => serializeRequirements(requirements),
+    [requirements, serializeRequirements]
+  );
+  const baselineKey = useMemo(
+    () => serializeRequirements(baselineRequirements),
+    [baselineRequirements, serializeRequirements]
+  );
+  const hasChanges = requirementsKey !== baselineKey;
 
   const fetchStores = useCallback(async () => {
     try {
@@ -284,7 +299,7 @@ export function RequirementsContent({ user }: RequirementsContentProps) {
           reqMap.set(r.timeSlot, r.requiredCount);
         });
         setRequirements(reqMap);
-        setHasChanges(false);
+        setBaselineRequirements(reqMap);
       }
     } catch (error) {
       console.error('必要人数取得エラー:', error);
@@ -313,7 +328,6 @@ export function RequirementsContent({ user }: RequirementsContentProps) {
       }
       return newRequirements;
     });
-    setHasChanges(true);
   }, []);
 
   const handleSave = useCallback(async () => {
@@ -337,7 +351,7 @@ export function RequirementsContent({ user }: RequirementsContentProps) {
       });
 
       if (res.ok) {
-        setHasChanges(false);
+        setBaselineRequirements(new Map(requirements));
         alert('保存しました');
       } else {
         const error = await res.json();
@@ -366,7 +380,7 @@ export function RequirementsContent({ user }: RequirementsContentProps) {
         }));
 
       for (const day of targetDays) {
-        await fetch('/api/shift-requirements', {
+        const res = await fetch('/api/shift-requirements', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -375,12 +389,16 @@ export function RequirementsContent({ user }: RequirementsContentProps) {
             requirements: requirementsArray,
           }),
         });
+        if (!res.ok) {
+          const error = await res.json().catch(() => null);
+          throw new Error(error?.error || 'コピーに失敗しました');
+        }
       }
 
       alert('コピーしました');
     } catch (error) {
       console.error('コピーエラー:', error);
-      alert('コピーに失敗しました');
+      alert(error instanceof Error ? error.message : 'コピーに失敗しました');
     } finally {
       setSaving(false);
     }
@@ -389,7 +407,6 @@ export function RequirementsContent({ user }: RequirementsContentProps) {
   const handleClear = useCallback(() => {
     if (confirm('すべての時間帯をクリアしますか？')) {
       setRequirements(new Map());
-      setHasChanges(true);
     }
   }, []);
 
@@ -400,7 +417,6 @@ export function RequirementsContent({ user }: RequirementsContentProps) {
         newRequirements.set(timeSlot, getRecommendedCount(timeSlot));
       }
       setRequirements(newRequirements);
-      setHasChanges(true);
     }
   }, []);
 
@@ -417,7 +433,7 @@ export function RequirementsContent({ user }: RequirementsContentProps) {
       }));
 
       for (let day = 0; day < 7; day++) {
-        await fetch('/api/shift-requirements', {
+        const res = await fetch('/api/shift-requirements', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -426,6 +442,10 @@ export function RequirementsContent({ user }: RequirementsContentProps) {
             requirements: requirementsArray,
           }),
         });
+        if (!res.ok) {
+          const error = await res.json().catch(() => null);
+          throw new Error(error?.error || 'おすすめ設定の適用に失敗しました');
+        }
       }
 
       // 現在表示中の曜日も更新
@@ -434,11 +454,11 @@ export function RequirementsContent({ user }: RequirementsContentProps) {
         newRequirements.set(timeSlot, getRecommendedCount(timeSlot));
       }
       setRequirements(newRequirements);
-      setHasChanges(false);
+      setBaselineRequirements(newRequirements);
       alert('全曜日におすすめ設定を適用しました');
     } catch (error) {
       console.error('おすすめ設定適用エラー:', error);
-      alert('適用に失敗しました');
+      alert(error instanceof Error ? error.message : '適用に失敗しました');
     } finally {
       setSaving(false);
     }

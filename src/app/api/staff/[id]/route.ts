@@ -32,10 +32,15 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     // 勤務可能時間パターンも取得
     const patterns = await db.select().from(availabilityPatterns).where(eq(availabilityPatterns.staffId, staffId));
+    const normalizedPatterns = patterns.map((pattern) => ({
+      ...pattern,
+      startTime: pattern.startTime.slice(0, 5),
+      endTime: pattern.endTime.slice(0, 5),
+    }));
 
     return NextResponse.json({
       ...staffMember,
-      availabilityPatterns: patterns,
+      availabilityPatterns: normalizedPatterns,
     });
   } catch (error) {
     console.error('スタッフ詳細取得エラー:', error);

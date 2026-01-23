@@ -32,6 +32,7 @@ import {
   isToday,
   isBefore,
   startOfDay,
+  parseISO,
 } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import {
@@ -149,12 +150,22 @@ export function TimeOffContent({ user }: TimeOffContentProps) {
     return [...emptyDays, ...days];
   }, [currentMonth]);
 
+  const myRequestByDate = useMemo(() => {
+    const map = new Map<string, TimeOffRequest>();
+    requests.forEach((r) => {
+      if (r.staffId === user.id && !map.has(r.date)) {
+        map.set(r.date, r);
+      }
+    });
+    return map;
+  }, [requests, user.id]);
+
   const getRequestForDate = useCallback(
     (date: Date) => {
       const dateStr = format(date, 'yyyy-MM-dd');
-      return requests.find((r) => r.date === dateStr && r.staffId === user.id);
+      return myRequestByDate.get(dateStr);
     },
-    [requests, user.id]
+    [myRequestByDate]
   );
 
   const toggleDateSelection = useCallback(
@@ -333,7 +344,7 @@ export function TimeOffContent({ user }: TimeOffContentProps) {
                           <TableRow key={request.id}>
                             <TableCell className="font-medium">{request.staffName}</TableCell>
                             <TableCell>
-                              {format(new Date(request.date), 'M月d日 (E)', { locale: ja })}
+                              {format(parseISO(request.date), 'M月d日 (E)', { locale: ja })}
                             </TableCell>
                             <TableCell className="text-[#86868B]">
                               {format(new Date(request.createdAt), 'M/d HH:mm')}
@@ -404,7 +415,7 @@ export function TimeOffContent({ user }: TimeOffContentProps) {
                         <TableRow key={request.id}>
                           <TableCell className="font-medium">{request.staffName}</TableCell>
                           <TableCell>
-                            {format(new Date(request.date), 'M月d日 (E)', { locale: ja })}
+                            {format(parseISO(request.date), 'M月d日 (E)', { locale: ja })}
                           </TableCell>
                           <TableCell>
                             <StatusBadge status={request.status} />
@@ -434,10 +445,7 @@ export function TimeOffContent({ user }: TimeOffContentProps) {
               onToggleDate={toggleDateSelection}
               onSubmit={handleSubmitRequests}
               onDelete={handleDeleteRequest}
-              getRequestForDate={(date) => {
-                const dateStr = format(date, 'yyyy-MM-dd');
-                return requests.find((r) => r.date === dateStr && r.staffId === user.id);
-              }}
+              getRequestForDate={getRequestForDate}
             />
           </TabsContent>
         </Tabs>
@@ -687,7 +695,7 @@ const StaffRequestView = memo(function StaffRequestView({
                 >
                   <div>
                     <p className="text-sm font-medium text-[#1D1D1F]">
-                      {format(new Date(request.date), 'M月d日 (E)', { locale: ja })}
+                      {format(parseISO(request.date), 'M月d日 (E)', { locale: ja })}
                     </p>
                     <StatusBadge status={request.status} />
                   </div>

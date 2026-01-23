@@ -12,6 +12,7 @@ import {
 } from "./gap-analyzer";
 import { getDayName } from "@/lib/gemini/prompts";
 import { requestShiftAssignment } from "@/lib/gemini/client";
+import { timeToMinutes } from "@/lib/time-constants";
 
 export interface ShiftProposalResult {
   date: string;
@@ -112,7 +113,7 @@ export async function proposeShifts(date: string, storeId: number): Promise<Shif
 function validateProposedShifts(
   shifts: ProposedShift[],
   input: AutoAssignInput,
-  availableStaff: { id: string; name: string; employmentType: 'employee' | 'partTime'; availableFrom: string; availableTo: string }[]
+  availableStaff: { id: string; name: string; employmentType: 'employee' | 'part_time'; availableFrom: string; availableTo: string }[]
 ): ProposedShift[] {
   return shifts.filter((shift) => {
     // スタッフが存在するか確認
@@ -178,12 +179,6 @@ function isTimeOverlap(
   return s1 < e2 && e1 > s2;
 }
 
-// 時刻を分に変換
-function timeToMinutes(time: string): number {
-  const [hours, minutes] = time.split(":").map(Number);
-  return hours * 60 + minutes;
-}
-
 // 不足時間帯の範囲をフォーマット
 function formatGapRange(
   gaps: { hour: number; minute: number }[]
@@ -207,26 +202,27 @@ export async function applyProposedShifts(
   storeId: number,
   shifts: ProposedShift[]
 ): Promise<void> {
-  const response = await fetch("/api/shifts", {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      date,
-      storeId,
-      shifts: shifts.map((s) => ({
-        staffId: parseInt(s.staffId, 10), // 文字列から数値に変換
+  const requests = shifts.map((s) =>
+    fetch("/api/shifts", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        staffId: parseInt(s.staffId, 10),
         storeId,
         date,
         startTime: s.startTime,
         endTime: s.endTime,
-      })),
-    }),
-  });
+      }),
+    })
+  );
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "シフトの保存に失敗しました");
+  const responses = await Promise.all(requests);
+  for (const response of responses) {
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || "シフトの保存に失敗しました");
+    }
   }
 }

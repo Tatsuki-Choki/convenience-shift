@@ -1,36 +1,170 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Convenience Shift
 
-## Getting Started
+コンビニエンスストア向けのシフト管理アプリケーションです。スタッフの勤務可能時間、シフト要件、AIによる自動シフト割り振り機能を提供します。
 
-First, run the development server:
+## 技術スタック
+
+- **フレームワーク**: Next.js 16 (App Router)
+- **言語**: TypeScript (strict mode)
+- **UI**: React 19, Tailwind CSS 4, Radix UI
+- **データベース**: PostgreSQL (Neon Serverless)
+- **ORM**: Drizzle ORM
+- **AI**: Google Gemini API
+- **ドラッグ&ドロップ**: dnd-kit
+- **テスト**: Vitest, Testing Library
+- **デプロイ**: Vercel
+
+## 機能
+
+- 月別/日別シフト管理
+- スタッフ管理（社員/アルバイト）
+- 勤務可能時間パターンの設定
+- 休暇希望の管理
+- 時間帯別の必要人数設定
+- AIによるシフト自動割り振り
+- シフトのドラッグ&ドロップ編集
+- 残業（8時間超過）の視覚的表示
+
+## セットアップ
+
+### 前提条件
+
+- Node.js 20以上
+- npm
+- PostgreSQL データベース（Neon推奨）
+- Google Gemini API キー（自動割り振り機能に必要）
+
+### インストール
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# リポジトリをクローン
+git clone https://github.com/your-username/convenience_shift.git
+cd convenience_shift
+
+# 依存パッケージをインストール
+npm install
+
+# 環境変数を設定
+cp .env.example .env.local
+# .env.local を編集して必要な値を設定
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 環境変数
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+`.env.local` に以下の環境変数を設定してください：
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| 変数名 | 説明 | 必須 |
+|--------|------|------|
+| `DATABASE_URL` | PostgreSQL接続URL | Yes |
+| `GEMINI_API_KEY` | Google Gemini API キー | No* |
 
-## Learn More
+*自動シフト割り振り機能を使用する場合は必要
 
-To learn more about Next.js, take a look at the following resources:
+### データベースセットアップ
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+# スキーマをデータベースにプッシュ
+npx drizzle-kit push
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+# (オプション) シードデータを投入
+npx tsx src/lib/db/seed.ts
+```
 
-## Deploy on Vercel
+## 開発
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+# 開発サーバーを起動
+npm run dev
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+# リントを実行
+npm run lint
+
+# テストを実行
+npm run test
+
+# テストを一度だけ実行
+npm run test:run
+
+# カバレッジ付きでテストを実行
+npm run test:coverage
+
+# 本番ビルド
+npm run build
+
+# 本番サーバーを起動
+npm run start
+```
+
+## プロジェクト構成
+
+```
+src/
+├── app/                    # Next.js App Router
+│   ├── api/               # APIルート
+│   │   ├── auth/          # 認証関連
+│   │   ├── shifts/        # シフト管理
+│   │   ├── staff/         # スタッフ管理
+│   │   └── stores/        # 店舗管理
+│   ├── dashboard/         # ダッシュボード画面
+│   │   ├── shifts/        # シフト管理画面
+│   │   │   └── [date]/    # 日別シフト編集
+│   │   ├── staff/         # スタッフ管理画面
+│   │   └── settings/      # 設定画面
+│   └── login/             # ログイン画面
+├── components/            # 共通コンポーネント
+│   ├── layout/           # レイアウト
+│   ├── shifts/           # シフト関連
+│   ├── staff/            # スタッフ関連
+│   └── ui/               # UIプリミティブ
+├── hooks/                 # カスタムフック
+├── lib/                   # ユーティリティ
+│   ├── auto-assign/      # 自動割り振りロジック
+│   ├── db/               # データベース
+│   │   └── schema.ts     # Drizzleスキーマ
+│   └── gemini/           # Gemini API連携
+└── types/                 # 型定義
+```
+
+## ユーザーロール
+
+| ロール | 権限 |
+|--------|------|
+| `owner` | 全店舗のデータにアクセス可能 |
+| `manager` | 所属店舗のデータにアクセス可能 |
+
+## API仕様
+
+主要なAPIエンドポイント：
+
+- `GET/POST /api/shifts` - シフト一覧取得/作成
+- `GET/PUT/DELETE /api/shifts/[id]` - シフト個別操作
+- `GET/POST /api/staff` - スタッフ一覧取得/作成
+- `GET/PUT/DELETE /api/staff/[id]` - スタッフ個別操作
+- `GET/POST /api/staff/[id]/availability` - 勤務可能時間パターン
+- `GET/POST /api/time-off-requests` - 休暇希望
+- `GET/POST /api/shift-requirements` - シフト要件
+
+## テスト
+
+```bash
+# 全テストを実行
+npm run test
+
+# 特定のファイルをテスト
+npm run test -- src/__tests__/time-constants.test.ts
+
+# ウォッチモード
+npm run test -- --watch
+```
+
+## デプロイ
+
+Vercelへのデプロイ：
+
+1. Vercelにリポジトリを接続
+2. 環境変数を設定（`DATABASE_URL`）
+3. デプロイを実行
+
+## ライセンス
+
+MIT

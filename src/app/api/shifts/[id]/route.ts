@@ -4,6 +4,12 @@ import { shifts, staff } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { requireAdmin, getSession, canAccessStore } from '@/lib/auth';
 
+const normalizeShiftTime = <T extends { startTime: string; endTime: string }>(shift: T) => ({
+  ...shift,
+  startTime: shift.startTime.slice(0, 5),
+  endTime: shift.endTime.slice(0, 5),
+});
+
 interface RouteParams {
   params: Promise<{ id: string }>;
 }
@@ -46,7 +52,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'このシフトへのアクセス権限がありません' }, { status: 403 });
     }
 
-    return NextResponse.json(shift);
+    return NextResponse.json(normalizeShiftTime(shift));
   } catch (error) {
     console.error('シフト詳細取得エラー:', error);
     return NextResponse.json({ error: 'シフト詳細の取得に失敗しました' }, { status: 500 });
@@ -86,7 +92,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       .where(eq(shifts.id, shiftId))
       .returning();
 
-    return NextResponse.json(updatedShift);
+    return NextResponse.json(normalizeShiftTime(updatedShift));
   } catch (error) {
     console.error('シフト更新エラー:', error);
     if (error instanceof Error && error.message === '管理者権限が必要です') {

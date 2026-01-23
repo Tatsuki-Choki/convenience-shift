@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers';
+import { createHmac, timingSafeEqual } from 'crypto';
 
 // デモユーザー定義
 export const DEMO_USERS = {
@@ -38,6 +39,42 @@ export type DemoUser = (typeof DEMO_USERS)[keyof typeof DEMO_USERS];
 export type UserRole = 'owner' | 'manager' | 'staff';
 
 const SESSION_COOKIE_NAME = 'demo_session';
+const SESSION_COOKIE_SEPARATOR = '.';
+
+function getSessionSecret(): string {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) {
+    throw new Error('SESSION_SECRET is not set');
+  }
+  return secret;
+}
+
+function signPayload(payload: string, secret: string): string {
+  return createHmac('sha256', secret).update(payload).digest('base64url');
+}
+
+function encodeSessionCookie(user: SessionUser, secret: string): string {
+  const payload = Buffer.from(JSON.stringify(user), 'utf8').toString('base64url');
+  const signature = signPayload(payload, secret);
+  return `${payload}${SESSION_COOKIE_SEPARATOR}${signature}`;
+}
+
+function decodeSessionCookie(value: string, secret: string): SessionUser | null {
+  const parts = value.split(SESSION_COOKIE_SEPARATOR);
+  if (parts.length !== 2) return null;
+
+  const [payload, signature] = parts;
+  const expected = signPayload(payload, secret);
+  if (signature.length !== expected.length) return null;
+  if (!timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
+
+  try {
+    const json = Buffer.from(payload, 'base64url').toString('utf8');
+    return JSON.parse(json) as SessionUser;
+  } catch {
+    return null;
+  }
+}
 
 export interface SessionUser {
   id: number;
@@ -56,7 +93,8 @@ export async function getSession(): Promise<SessionUser | null> {
   }
 
   try {
-    return JSON.parse(sessionCookie.value) as SessionUser;
+    const secret = getSessionSecret();
+    return decodeSessionCookie(sessionCookie.value, secret);
   } catch {
     return null;
   }
@@ -73,7 +111,9 @@ export async function login(userKey: keyof typeof DEMO_USERS): Promise<SessionUs
   };
 
   const cookieStore = await cookies();
-  cookieStore.set(SESSION_COOKIE_NAME, JSON.stringify(sessionUser), {
+  const secret = getSessionSecret();
+  const signedValue = encodeSessionCookie(sessionUser, secret);
+  cookieStore.set(SESSION_COOKIE_NAME, signedValue, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
