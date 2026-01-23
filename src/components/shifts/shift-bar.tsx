@@ -105,12 +105,11 @@ export function ShiftBar({
         const currentStartIndex = timeSlots.findIndex((t) => t === startTime);
         let newStartIndex = currentStartIndex + cellsMoved;
 
-        // 制限: 最小2時間（4セル）
+        // 制限: 最小2時間（4セル）、最大制限なし（8時間超は残業として表示）
         const currentEndIndex = timeSlots.findIndex((t) => t === endTime);
-        const minStartIndex = currentEndIndex - 16; // 最大8時間
         const maxStartIndex = currentEndIndex - 4;  // 最小2時間
 
-        newStartIndex = Math.max(0, Math.min(maxStartIndex, Math.max(minStartIndex, newStartIndex)));
+        newStartIndex = Math.max(0, Math.min(maxStartIndex, newStartIndex));
 
         if (newStartIndex >= 0 && newStartIndex < timeSlots.length) {
           setTempStartTime(timeSlots[newStartIndex]);
@@ -119,12 +118,11 @@ export function ShiftBar({
         const currentEndIndex = timeSlots.findIndex((t) => t === endTime);
         let newEndIndex = currentEndIndex + cellsMoved;
 
-        // 制限: 最小2時間（4セル）
+        // 制限: 最小2時間（4セル）、最大制限なし（8時間超は残業として表示）
         const currentStartIndex = timeSlots.findIndex((t) => t === startTime);
         const minEndIndex = currentStartIndex + 4;  // 最小2時間
-        const maxEndIndex = currentStartIndex + 16; // 最大8時間
 
-        newEndIndex = Math.max(minEndIndex, Math.min(Math.min(maxEndIndex, timeSlots.length), newEndIndex));
+        newEndIndex = Math.max(minEndIndex, Math.min(timeSlots.length, newEndIndex));
 
         if (newEndIndex > 0 && newEndIndex <= timeSlots.length) {
           setTempEndTime(timeSlots[newEndIndex] || '24:00');
