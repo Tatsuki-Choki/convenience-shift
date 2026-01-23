@@ -216,7 +216,7 @@ export async function applyProposedShifts(
       date,
       storeId,
       shifts: shifts.map((s) => ({
-        staffId: s.staffId,
+        staffId: parseInt(s.staffId, 10), // 文字列から数値に変換
         storeId,
         date,
         startTime: s.startTime,
