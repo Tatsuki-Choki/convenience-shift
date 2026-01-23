@@ -155,6 +155,12 @@ export function ShiftBar({
   const mins = duration % 60;
   const displayOvertime = duration > 8 * 60;
 
+  // 8時間以内と8時間超過の幅を計算
+  const normalMinutes = Math.min(duration, 8 * 60);
+  const overtimeMinutes = Math.max(0, duration - 8 * 60);
+  const normalWidthPercent = (normalMinutes / duration) * 100;
+  const overtimeWidthPercent = (overtimeMinutes / duration) * 100;
+
   return (
     <div
       ref={(node) => {
@@ -162,24 +168,47 @@ export function ShiftBar({
         if (barRef) (barRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
       }}
       style={style}
-      className={`absolute top-1 bottom-1 rounded-lg flex items-center justify-between px-1 cursor-grab active:cursor-grabbing select-none transition-shadow ${
-        displayOvertime || isOvertime
-          ? 'bg-[#FF9500] shadow-[0_0_0_2px_rgba(255,149,0,0.3)]'
-          : 'bg-[#007AFF] shadow-[0_0_0_2px_rgba(0,122,255,0.3)]'
-      } ${isDragging ? 'shadow-lg' : ''} ${isResizing ? 'cursor-ew-resize' : ''}`}
+      className={`absolute top-1 bottom-1 rounded-lg flex items-center cursor-grab active:cursor-grabbing select-none transition-shadow overflow-hidden ${
+        isDragging ? 'shadow-lg' : ''
+      } ${isResizing ? 'cursor-ew-resize' : ''}`}
       {...attributes}
       {...listeners}
     >
+      {/* 背景色のセグメント */}
+      <div className="absolute inset-0 flex">
+        {/* 通常勤務部分（青色） */}
+        <div
+          className="h-full bg-[#007AFF]"
+          style={{ width: `${normalWidthPercent}%` }}
+        />
+        {/* 残業部分（オレンジ色） - 8時間超過時のみ表示 */}
+        {displayOvertime && (
+          <div
+            className="h-full bg-[#FF9500]"
+            style={{ width: `${overtimeWidthPercent}%` }}
+          />
+        )}
+      </div>
+
+      {/* 外枠のシャドウ */}
+      <div
+        className={`absolute inset-0 rounded-lg pointer-events-none ${
+          displayOvertime
+            ? 'shadow-[0_0_0_2px_rgba(255,149,0,0.3)]'
+            : 'shadow-[0_0_0_2px_rgba(0,122,255,0.3)]'
+        }`}
+      />
+
       {/* 左リサイズハンドル */}
       <div
-        className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-white/30 rounded-l-lg flex items-center justify-center"
+        className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-white/30 rounded-l-lg flex items-center justify-center z-10"
         onMouseDown={(e) => handleResizeStart('left', e)}
       >
         <div className="w-0.5 h-3 bg-white/50 rounded" />
       </div>
 
       {/* 中央コンテンツ */}
-      <div className="flex-1 flex items-center justify-center gap-1 px-3 min-w-0">
+      <div className="flex-1 flex items-center justify-center gap-1 px-3 min-w-0 z-10">
         <GripVertical className="w-3 h-3 text-white/70 flex-shrink-0" />
         <span className="text-[10px] text-white font-medium truncate">
           {isResizing ? tempStartTime : startTime}-{isResizing ? tempEndTime : endTime}
@@ -193,7 +222,7 @@ export function ShiftBar({
 
       {/* 右リサイズハンドル */}
       <div
-        className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-white/30 rounded-r-lg flex items-center justify-center"
+        className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-white/30 rounded-r-lg flex items-center justify-center z-10"
         onMouseDown={(e) => handleResizeStart('right', e)}
       >
         <div className="w-0.5 h-3 bg-white/50 rounded" />
@@ -224,24 +253,44 @@ export function ShiftBarOverlay({
   const hours = Math.floor(duration / 60);
   const mins = duration % 60;
 
+  // 8時間以内と8時間超過の幅を計算
+  const normalMinutes = Math.min(duration, 8 * 60);
+  const overtimeMinutes = Math.max(0, duration - 8 * 60);
+  const normalWidthPercent = (normalMinutes / duration) * 100;
+  const overtimeWidthPercent = (overtimeMinutes / duration) * 100;
+
   return (
     <div
       style={{ width: `${width}px` }}
-      className={`h-6 rounded-lg flex items-center justify-center px-2 shadow-lg ${
-        isOvertime
-          ? 'bg-[#FF9500]'
-          : 'bg-[#007AFF]'
-      }`}
+      className="h-6 rounded-lg flex items-center justify-center px-2 shadow-lg relative overflow-hidden"
     >
-      <GripVertical className="w-3 h-3 text-white/70" />
-      <span className="text-[10px] text-white font-medium ml-1">
-        {startTime}-{endTime}
-      </span>
-      {width > 100 && (
-        <span className="text-[9px] text-white/80 ml-1">
-          ({hours}h{mins > 0 ? `${mins}m` : ''})
+      {/* 背景色のセグメント */}
+      <div className="absolute inset-0 flex">
+        {/* 通常勤務部分（青色） */}
+        <div
+          className="h-full bg-[#007AFF]"
+          style={{ width: `${normalWidthPercent}%` }}
+        />
+        {/* 残業部分（オレンジ色） */}
+        {isOvertime && (
+          <div
+            className="h-full bg-[#FF9500]"
+            style={{ width: `${overtimeWidthPercent}%` }}
+          />
+        )}
+      </div>
+      {/* コンテンツ */}
+      <div className="relative z-10 flex items-center">
+        <GripVertical className="w-3 h-3 text-white/70" />
+        <span className="text-[10px] text-white font-medium ml-1">
+          {startTime}-{endTime}
         </span>
-      )}
+        {width > 100 && (
+          <span className="text-[9px] text-white/80 ml-1">
+            ({hours}h{mins > 0 ? `${mins}m` : ''})
+          </span>
+        )}
+      </div>
     </div>
   );
 }
