@@ -63,6 +63,9 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
       availableFrom: string;
       availableTo: string;
       coverSlots: string[];
+      employmentType: 'employee' | 'part_time';
+      role: 'owner' | 'manager' | 'staff';
+      skillLevel: number | null;
     }[]
   >([]);
   const [crossStoreCoverage, setCrossStoreCoverage] = useState<Record<string, number>>({});
