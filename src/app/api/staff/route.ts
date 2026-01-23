@@ -26,9 +26,15 @@ export async function GET(request: NextRequest) {
           id: staff.id,
           storeId: staff.storeId,
           name: staff.name,
+          email: staff.email,
+          phone: staff.phone,
           employmentType: staff.employmentType,
-          role: staff.role,
+          hourlyRate: staff.hourlyRate,
+          joinedAt: staff.joinedAt,
           skillLevel: staff.skillLevel,
+          notes: staff.notes,
+          role: staff.role,
+          createdAt: staff.createdAt,
         })
         .from(staff)
         .where(eq(staff.storeId, storeIdNum));
@@ -42,9 +48,15 @@ export async function GET(request: NextRequest) {
           id: staff.id,
           storeId: staff.storeId,
           name: staff.name,
+          email: staff.email,
+          phone: staff.phone,
           employmentType: staff.employmentType,
-          role: staff.role,
+          hourlyRate: staff.hourlyRate,
+          joinedAt: staff.joinedAt,
           skillLevel: staff.skillLevel,
+          notes: staff.notes,
+          role: staff.role,
+          createdAt: staff.createdAt,
         })
         .from(staff);
       return NextResponse.json(staffList);
@@ -54,9 +66,15 @@ export async function GET(request: NextRequest) {
           id: staff.id,
           storeId: staff.storeId,
           name: staff.name,
+          email: staff.email,
+          phone: staff.phone,
           employmentType: staff.employmentType,
-          role: staff.role,
+          hourlyRate: staff.hourlyRate,
+          joinedAt: staff.joinedAt,
           skillLevel: staff.skillLevel,
+          notes: staff.notes,
+          role: staff.role,
+          createdAt: staff.createdAt,
         })
         .from(staff)
         .where(eq(staff.storeId, session.storeId));
