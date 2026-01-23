@@ -13,6 +13,7 @@ interface StaffApiResponse {
   name: string;
   hourlyRate: number;
   storeId: number;
+  employmentType: 'employee' | 'partTime';
 }
 
 interface AvailabilityApiResponse {
@@ -97,6 +98,7 @@ async function fetchStaff(storeId: number): Promise<StaffInfo[]> {
     id: String(s.id),
     name: s.name,
     hourlyWage: s.hourlyRate,
+    employmentType: s.employmentType,
   }));
 }
 
@@ -208,12 +210,14 @@ export function getAvailableStaff(
 ): {
   id: string;
   name: string;
+  employmentType: 'employee' | 'partTime';
   availableFrom: string;
   availableTo: string;
 }[] {
   const result: {
     id: string;
     name: string;
+    employmentType: 'employee' | 'partTime';
     availableFrom: string;
     availableTo: string;
   }[] = [];
@@ -270,6 +274,7 @@ export function getAvailableStaff(
     result.push({
       id: staff.id,
       name: staff.name,
+      employmentType: staff.employmentType,
       availableFrom,
       availableTo,
     });

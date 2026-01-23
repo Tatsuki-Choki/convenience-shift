@@ -69,12 +69,17 @@ ${formatAvailableStaff(request.availableStaff)}
 ## 既存シフト（重複不可）
 ${formatExistingShifts(request.existingShifts)}
 
-## 制約条件（優先順位順）
-1. スタッフの勤務可能時間を厳守（時間外の割り当て禁止）
-2. 既存シフトと時間が重複するスタッフには割り当てない
-3. 不足時間帯をできるだけ埋める
-4. 連続した時間帯を1つのシフトにまとめる（細切れ禁止）
-5. 最低シフト時間は2時間以上
+## 制約条件（必須）
+1. 1人あたりのシフトは最長8時間まで（労働基準法に準拠、絶対厳守）
+2. スタッフの勤務可能時間内でのみ割り当て
+3. 既存シフトと時間が重複するスタッフには割り当てない
+4. 最低シフト時間は3時間以上
+
+## 割り当て方針
+- 社員とアルバイトをバランスよく配置（各時間帯に混在が望ましい）
+- 複数のスタッフで時間帯を分担し、1人に負担を集中させない
+- 全ての不足を埋められなくても、可能な範囲で提案する
+- 朝・昼・夕・夜で異なるスタッフを配置し、シフトを分散させる
 
 ## 出力形式
 以下のJSON形式で回答してください:
@@ -122,7 +127,10 @@ function formatAvailableStaff(staff: GeminiShiftRequest["availableStaff"]): stri
   }
 
   return staff
-    .map(s => `- ${s.name}（ID: ${s.id}）: ${s.availableFrom}〜${s.availableTo}`)
+    .map(s => {
+      const type = s.employmentType === 'employee' ? '社員' : 'アルバイト';
+      return `- ${s.name}（ID: ${s.id}、${type}）: ${s.availableFrom}〜${s.availableTo}`;
+    })
     .join("\n");
 }
 

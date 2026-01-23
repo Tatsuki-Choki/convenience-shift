@@ -3,6 +3,7 @@ export interface StaffInfo {
   id: string;
   name: string;
   hourlyWage: number;
+  employmentType: 'employee' | 'partTime'; // employee=社員, partTime=アルバイト
 }
 
 // 勤務可能時間パターン
@@ -66,6 +67,7 @@ export interface GeminiShiftRequest {
   availableStaff: {
     id: string;
     name: string;
+    employmentType: 'employee' | 'partTime'; // employee=社員, partTime=アルバイト
     availableFrom: string;
     availableTo: string;
   }[];

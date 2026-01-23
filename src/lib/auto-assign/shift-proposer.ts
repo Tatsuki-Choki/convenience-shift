@@ -112,7 +112,7 @@ export async function proposeShifts(date: string, storeId: number): Promise<Shif
 function validateProposedShifts(
   shifts: ProposedShift[],
   input: AutoAssignInput,
-  availableStaff: { id: string; name: string; availableFrom: string; availableTo: string }[]
+  availableStaff: { id: string; name: string; employmentType: 'employee' | 'partTime'; availableFrom: string; availableTo: string }[]
 ): ProposedShift[] {
   return shifts.filter((shift) => {
     // スタッフが存在するか確認
