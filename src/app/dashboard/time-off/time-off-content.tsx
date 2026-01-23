@@ -363,7 +363,8 @@ export function TimeOffContent({ user }: TimeOffContentProps) {
                     size="sm"
                     onClick={() => handleBulkUpdate('approved')}
                     disabled={pendingRequests.length === 0 || loading || bulkProcessing}
-                    className="bg-[#34C759] hover:bg-[#30D158] text-white"
+                    variant="outline"
+                    className="border-[#E5E5EA] text-[#1D1D1F] hover:bg-[#F5F5F7]"
                   >
                     すべて承認
                   </Button>
@@ -372,7 +373,7 @@ export function TimeOffContent({ user }: TimeOffContentProps) {
                     variant="destructive"
                     onClick={() => handleBulkUpdate('rejected')}
                     disabled={pendingRequests.length === 0 || loading || bulkProcessing}
-                    className="bg-[#FF3B30] hover:bg-[#FF453A]"
+                    className="border border-[#E5E5EA] bg-white text-[#1D1D1F] hover:bg-[#F5F5F7]"
                   >
                     すべて却下
                   </Button>
