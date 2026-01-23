@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, memo } from 'react';
+import { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { DashboardLayout, PageSection } from '@/components/layout/dashboard-layout';
 import { Button } from '@/components/ui/button';
@@ -37,6 +37,19 @@ import { AutoAssignPreviewDialog } from '@/components/shifts/auto-assign-preview
 import { ApiKeySettingsDialog } from '@/components/shifts/api-key-settings';
 import { useGeminiApi } from '@/hooks/use-gemini-api';
 import { proposeShifts, applyProposedShifts, type ShiftProposalResult } from '@/lib/auto-assign/shift-proposer';
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
+  MouseSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  pointerWithin,
+} from '@dnd-kit/core';
+import { restrictToHorizontalAxis } from '@dnd-kit/modifiers';
+import { ShiftBar, ShiftBarOverlay } from '@/components/shifts/shift-bar';
 
 interface Store {
   id: number;
@@ -133,6 +146,31 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
   const [editingStaffId, setEditingStaffId] = useState<number | null>(null);
   const [editStartTime, setEditStartTime] = useState('09:00');
   const [editEndTime, setEditEndTime] = useState('17:00');
+
+  // ドラッグ&ドロップ用
+  const [cellWidth, setCellWidth] = useState(40);
+  const [activeShift, setActiveShift] = useState<{
+    shiftId: number;
+    staffId: number;
+    startTime: string;
+    endTime: string;
+  } | null>(null);
+  const [isResizing, setIsResizing] = useState(false);
+  const tableRef = useRef<HTMLTableElement>(null);
+
+  // ドラッグセンサー設定
+  const mouseSensor = useSensor(MouseSensor, {
+    activationConstraint: {
+      distance: 5, // 5px以上移動で発火
+    },
+  });
+  const touchSensor = useSensor(TouchSensor, {
+    activationConstraint: {
+      delay: 200, // 200ms長押しで発火
+      tolerance: 5,
+    },
+  });
+  const sensors = useSensors(mouseSensor, touchSensor);
 
   const currentDate = parseISO(date);
   const dayOfWeek = getDay(currentDate);
@@ -396,6 +434,113 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
     setSelectedStoreId(value);
   }, []);
 
+  // セル幅の測定
+  useEffect(() => {
+    const measureCellWidth = () => {
+      if (tableRef.current) {
+        const cell = tableRef.current.querySelector('[data-time-cell]');
+        if (cell) {
+          const rect = cell.getBoundingClientRect();
+          setCellWidth(rect.width);
+        }
+      }
+    };
+
+    measureCellWidth();
+    window.addEventListener('resize', measureCellWidth);
+    return () => window.removeEventListener('resize', measureCellWidth);
+  }, [loading]);
+
+  // ドラッグ開始ハンドラ
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    const { active } = event;
+    const data = active.data.current;
+    if (data?.type === 'shift') {
+      setActiveShift({
+        shiftId: data.shiftId,
+        staffId: data.staffId,
+        startTime: data.startTime,
+        endTime: data.endTime,
+      });
+    }
+  }, []);
+
+  // ドラッグ終了ハンドラ
+  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
+    const { active, delta } = event;
+    const data = active.data.current;
+
+    setActiveShift(null);
+
+    if (!data || data.type !== 'shift') return;
+
+    // 移動セル数を計算（30分単位でスナップ）
+    const cellsMoved = Math.round(delta.x / cellWidth);
+    if (cellsMoved === 0) return;
+
+    const { shiftId, startTime, endTime } = data;
+
+    // 新しい開始・終了時間を計算
+    const startIndex = TIME_SLOTS.findIndex((t) => t === startTime);
+    const endIndex = TIME_SLOTS.findIndex((t) => t === endTime);
+
+    let newStartIndex = startIndex + cellsMoved;
+    let newEndIndex = endIndex + cellsMoved;
+
+    // 範囲チェック
+    if (newStartIndex < 0) {
+      newStartIndex = 0;
+      newEndIndex = endIndex - startIndex;
+    }
+    if (newEndIndex > TIME_SLOTS.length) {
+      newEndIndex = TIME_SLOTS.length;
+      newStartIndex = TIME_SLOTS.length - (endIndex - startIndex);
+    }
+
+    const newStartTime = TIME_SLOTS[newStartIndex];
+    const newEndTime = TIME_SLOTS[newEndIndex] || '24:00';
+
+    if (newStartTime === startTime && newEndTime === endTime) return;
+
+    // シフト更新
+    try {
+      const res = await fetch(`/api/shifts/${shiftId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          startTime: newStartTime,
+          endTime: newEndTime,
+        }),
+      });
+
+      if (res.ok) {
+        await fetchShifts();
+      }
+    } catch (error) {
+      console.error('シフト更新エラー:', error);
+    }
+  }, [cellWidth, fetchShifts]);
+
+  // リサイズによるシフト更新ハンドラ
+  const handleShiftResize = useCallback(async (shiftId: number, newStartTime: string, newEndTime: string) => {
+    try {
+      const res = await fetch(`/api/shifts/${shiftId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          startTime: newStartTime,
+          endTime: newEndTime,
+        }),
+      });
+
+      if (res.ok) {
+        await fetchShifts();
+      }
+    } catch (error) {
+      console.error('シフト更新エラー:', error);
+    }
+  }, [fetchShifts]);
+
   // 自動割り振りハンドラ
   const handleAutoAssign = useCallback(async () => {
     setAutoAssignLoading(true);
@@ -541,20 +686,27 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
         {loading ? (
           <LoadingSkeleton />
         ) : (
-          <>
+          <DndContext
+            sensors={sensors}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            modifiers={[restrictToHorizontalAxis]}
+            collisionDetection={pointerWithin}
+          >
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1200px]">
+              <table ref={tableRef} className="w-full min-w-[1200px]">
                 <thead>
                   <tr className="border-b border-[#E5E5EA]">
-                    <th className="sticky left-0 bg-white p-1 text-left text-xs font-medium text-[#86868B] w-[100px] z-10">
+                    <th className="sticky left-0 bg-white p-1 text-left text-xs font-medium text-[#86868B] w-[100px] z-[60]">
                       名前
                     </th>
-                    <th className="sticky left-[100px] bg-white p-1 text-left text-xs font-medium text-[#86868B] w-[50px] z-10">
+                    <th className="sticky left-[100px] bg-white p-1 text-left text-xs font-medium text-[#86868B] w-[50px] z-[60] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]">
                       役職
                     </th>
                     {TIME_SLOTS.map((time) => (
                       <th
                         key={time}
+                        data-time-cell
                         className="p-1 text-center text-xs font-normal text-[#86868B] min-w-[40px]"
                       >
                         {time.endsWith(':00') ? time.split(':')[0] : ''}
@@ -563,7 +715,7 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
                   </tr>
                   {/* 必要人数行 */}
                   <tr className="border-b border-[#E5E5EA] bg-[#F5F5F7]">
-                    <td colSpan={2} className="sticky left-0 bg-[#F5F5F7] p-1 text-xs text-[#86868B] z-10 w-[150px]">
+                    <td colSpan={2} className="sticky left-0 bg-[#F5F5F7] p-1 text-xs text-[#86868B] z-[60] w-[150px] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]">
                       必要人数
                     </td>
                     {TIME_SLOTS.map((time) => {
@@ -597,6 +749,8 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
                 <tbody>
                   {staffList.map((staffMember) => {
                     const availability = getStaffAvailability(staffMember.id);
+                    const shift = getShiftForStaff(staffMember.id);
+                    const isOvertime = isOvertimeShift(staffMember.id);
 
                     return (
                       <tr
@@ -605,7 +759,7 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
                       >
                         {/* 名前セル */}
                         <td
-                          className="sticky left-0 bg-white p-1 z-10 w-[100px] cursor-pointer"
+                          className="sticky left-0 bg-white p-1 z-[60] w-[100px] cursor-pointer"
                           onClick={() => handleOpenEditDialog(staffMember.id)}
                         >
                           <div className="flex items-center gap-1">
@@ -617,9 +771,9 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
                             )}
                           </div>
                         </td>
-                        {/* 役職セル */}
+                        {/* 役職セル - 右側にシャドウを追加してシフトバーが透けないようにする */}
                         <td
-                          className="sticky left-[100px] bg-white p-1 z-10 w-[50px] cursor-pointer"
+                          className="sticky left-[100px] bg-white p-1 z-[60] w-[50px] cursor-pointer shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]"
                           onClick={() => handleOpenEditDialog(staffMember.id)}
                         >
                           <Badge
@@ -635,27 +789,45 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
                               : 'ﾊﾞｲﾄ'}
                           </Badge>
                         </td>
-                        {TIME_SLOTS.map((time) => {
-                          const isAvailable = isStaffAvailable(staffMember.id, time);
-                          const isInShift = isTimeInShift(staffMember.id, time);
-                          const isOvertime = isOvertimeShift(staffMember.id);
-
-                          return (
-                            <td
-                              key={time}
-                              className={`p-0 h-6 cursor-pointer transition-colors ${
-                                isInShift
-                                  ? isOvertime
-                                    ? 'bg-[#FF9500]' // 8時間超（残業）はオレンジ
-                                    : 'bg-[#007AFF]' // 通常シフトは青
-                                  : isAvailable
-                                  ? 'bg-[#34C759]/20 hover:bg-[#34C759]/30'
-                                  : 'bg-[#F5F5F7] hover:bg-[#E5E5EA]'
-                              }`}
-                              onClick={() => handleOpenEditDialog(staffMember.id, time)}
+                        {/* 時間スロットセル - relativeでShiftBarの親として機能 */}
+                        <td
+                          colSpan={TIME_SLOTS.length}
+                          className="p-0 h-8 relative"
+                        >
+                          {/* 背景：勤務可能時間帯の表示 */}
+                          <div className="absolute inset-0 flex">
+                            {TIME_SLOTS.map((time) => {
+                              const isAvailable = isStaffAvailable(staffMember.id, time);
+                              return (
+                                <div
+                                  key={time}
+                                  className={`flex-1 h-full cursor-pointer transition-colors ${
+                                    isAvailable
+                                      ? 'bg-[#34C759]/20 hover:bg-[#34C759]/30'
+                                      : 'bg-[#F5F5F7] hover:bg-[#E5E5EA]'
+                                  }`}
+                                  onClick={() => handleOpenEditDialog(staffMember.id, time)}
+                                />
+                              );
+                            })}
+                          </div>
+                          {/* シフトバー（シフトがある場合のみ表示） */}
+                          {shift && (
+                            <ShiftBar
+                              id={`shift-${shift.id}`}
+                              shiftId={shift.id}
+                              staffId={staffMember.id}
+                              startTime={shift.startTime}
+                              endTime={shift.endTime}
+                              isOvertime={isOvertime}
+                              cellWidth={cellWidth}
+                              timeSlots={TIME_SLOTS}
+                              onUpdate={handleShiftResize}
+                              onResizeStart={() => setIsResizing(true)}
+                              onResizeEnd={() => setIsResizing(false)}
                             />
-                          );
-                        })}
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
@@ -667,7 +839,7 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
             <div className="flex flex-wrap items-center gap-6 pt-4 mt-4 border-t border-[#E5E5EA]">
               <div className="flex items-center gap-2">
                 <div className="w-4 h-4 bg-[#007AFF] rounded" />
-                <span className="text-sm text-[#86868B]">シフト</span>
+                <span className="text-sm text-[#86868B]">シフト（ドラッグで移動、端をドラッグでリサイズ）</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-4 h-4 bg-[#FF9500] rounded" />
@@ -682,7 +854,22 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
                 <span className="text-sm text-[#86868B]">勤務不可</span>
               </div>
             </div>
-          </>
+
+            {/* ドラッグオーバーレイ */}
+            <DragOverlay modifiers={[restrictToHorizontalAxis]}>
+              {activeShift && (
+                <ShiftBarOverlay
+                  startTime={activeShift.startTime}
+                  endTime={activeShift.endTime}
+                  isOvertime={
+                    timeToMinutes(activeShift.endTime) - timeToMinutes(activeShift.startTime) > 8 * 60
+                  }
+                  cellWidth={cellWidth}
+                  timeSlots={TIME_SLOTS}
+                />
+              )}
+            </DragOverlay>
+          </DndContext>
         )}
       </PageSection>
 
