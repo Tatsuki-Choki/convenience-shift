@@ -82,6 +82,7 @@ export function TimeOffContent({ user }: TimeOffContentProps) {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [bulkProcessing, setBulkProcessing] = useState(false);
 
   const isAdmin = user.role === 'owner' || user.role === 'manager';
 
@@ -212,6 +213,12 @@ export function TimeOffContent({ user }: TimeOffContentProps) {
     }
   }, [selectedDates, fetchRequests]);
 
+  const pendingCount = requests.filter((r) => r.status === 'pending').length;
+  const pendingRequests = useMemo(
+    () => requests.filter((r) => r.status === 'pending'),
+    [requests]
+  );
+
   const handleDeleteRequest = useCallback(
     async (requestId: number) => {
       if (!confirm('この休み希望を取り消しますか？')) return;
@@ -266,10 +273,38 @@ export function TimeOffContent({ user }: TimeOffContentProps) {
     [fetchRequests]
   );
 
+  const handleBulkUpdate = useCallback(async (status: 'approved' | 'rejected') => {
+    if (pendingRequests.length === 0 || bulkProcessing) return;
+    const label = status === 'approved' ? '承認' : '却下';
+    if (!confirm(`承認待ちの休み希望をすべて${label}します。よろしいですか？`)) return;
+
+    setBulkProcessing(true);
+    try {
+      const responses = await Promise.all(
+        pendingRequests.map((request) =>
+          fetch(`/api/time-off-requests/${request.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status }),
+          })
+        )
+      );
+
+      const failed = responses.filter((res) => !res.ok);
+      if (failed.length > 0) {
+        alert(`一部の${label}に失敗しました（${failed.length}件）`);
+      }
+      await fetchRequests();
+    } catch (error) {
+      console.error('一括更新エラー:', error);
+      alert('一括更新に失敗しました');
+    } finally {
+      setBulkProcessing(false);
+    }
+  }, [pendingRequests, bulkProcessing, fetchRequests]);
+
   const handlePrevMonth = useCallback(() => setCurrentMonth((m) => subMonths(m, 1)), []);
   const handleNextMonth = useCallback(() => setCurrentMonth((m) => addMonths(m, 1)), []);
-
-  const pendingCount = requests.filter((r) => r.status === 'pending').length;
 
   const storeSelector = isAdmin && user.role === 'owner' && (
     <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
@@ -321,10 +356,31 @@ export function TimeOffContent({ user }: TimeOffContentProps) {
 
           <TabsContent value="approval">
             <PageSection>
-              <h3 className="text-lg font-semibold text-[#1D1D1F] mb-4">承認待ちの休み希望</h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-[#1D1D1F]">承認待ちの休み希望</h3>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => handleBulkUpdate('approved')}
+                    disabled={pendingRequests.length === 0 || loading || bulkProcessing}
+                    className="bg-[#34C759] hover:bg-[#30D158] text-white"
+                  >
+                    すべて承認
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => handleBulkUpdate('rejected')}
+                    disabled={pendingRequests.length === 0 || loading || bulkProcessing}
+                    className="bg-[#FF3B30] hover:bg-[#FF453A]"
+                  >
+                    すべて却下
+                  </Button>
+                </div>
+              </div>
               {loading ? (
                 <LoadingSkeleton />
-              ) : requests.filter((r) => r.status === 'pending').length === 0 ? (
+              ) : pendingRequests.length === 0 ? (
                 <EmptyState message="承認待ちの休み希望はありません" />
               ) : (
                 <div className="overflow-x-auto">
@@ -338,9 +394,7 @@ export function TimeOffContent({ user }: TimeOffContentProps) {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {requests
-                        .filter((r) => r.status === 'pending')
-                        .map((request) => (
+                      {pendingRequests.map((request) => (
                           <TableRow key={request.id}>
                             <TableCell className="font-medium">{request.staffName}</TableCell>
                             <TableCell>
@@ -354,6 +408,7 @@ export function TimeOffContent({ user }: TimeOffContentProps) {
                                 <Button
                                   size="sm"
                                   onClick={() => handleApprove(request.id)}
+                                  disabled={bulkProcessing}
                                   className="bg-[#34C759] hover:bg-[#30D158] text-white"
                                 >
                                   <CheckCircle className="w-4 h-4 mr-1" />
@@ -363,6 +418,7 @@ export function TimeOffContent({ user }: TimeOffContentProps) {
                                   size="sm"
                                   variant="destructive"
                                   onClick={() => handleReject(request.id)}
+                                  disabled={bulkProcessing}
                                   className="bg-[#FF3B30] hover:bg-[#FF453A]"
                                 >
                                   <XCircle className="w-4 h-4 mr-1" />
