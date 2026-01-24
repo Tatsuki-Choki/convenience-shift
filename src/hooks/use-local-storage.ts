@@ -17,11 +17,13 @@ export function useLocalStorage<T>(
     try {
       const item = window.localStorage.getItem(key);
       if (item) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setStoredValue(JSON.parse(item));
       }
     } catch (error) {
       console.warn(`Error reading localStorage key "${key}":`, error);
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsInitialized(true);
   }, [key]);
 
@@ -75,6 +77,7 @@ export function useGeminiApiKey(): [
   useEffect(() => {
     // クライアントサイドで読み込み完了を検出
     if (typeof window !== "undefined") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsLoaded(true);
     }
   }, []);

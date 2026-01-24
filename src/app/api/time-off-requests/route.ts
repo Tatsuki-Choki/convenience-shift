@@ -28,6 +28,7 @@ export async function GET(request: NextRequest) {
           date: timeOffRequests.date,
           status: timeOffRequests.status,
           createdAt: timeOffRequests.createdAt,
+          reason: timeOffRequests.reason,
           staffName: staff.name,
           staffStoreId: staff.storeId,
         })
@@ -39,7 +40,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 管理者の場合
-    let conditions: any[] = [];
+    const conditions: ReturnType<typeof eq>[] = [];
 
     if (storeId) {
       const storeIdNum = parseInt(storeId);
@@ -90,6 +91,7 @@ export async function GET(request: NextRequest) {
         date: timeOffRequests.date,
         status: timeOffRequests.status,
         createdAt: timeOffRequests.createdAt,
+        reason: timeOffRequests.reason,
         staffName: staff.name,
         staffStoreId: staff.storeId,
       })
@@ -113,7 +115,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { staffId, dates } = body;
+    const { staffId, dates, reason } = body;
 
     // スタッフは自分のみ。管理者も未指定なら自分に紐づける
     const targetStaffId = session.role === 'staff'
@@ -164,6 +166,7 @@ export async function POST(request: NextRequest) {
       staffId: targetStaffId,
       date,
       status: 'pending' as const,
+      reason: typeof reason === 'string' ? reason.trim() || null : null,
     }));
 
     await db.insert(timeOffRequests).values(newRequests);

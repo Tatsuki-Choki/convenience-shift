@@ -118,12 +118,15 @@ export function useShiftData({ user, date, initialStoreId }: UseShiftDataProps):
   }, [fetchStaff, fetchShifts, fetchRequirements]);
 
   useEffect(() => {
-    fetchStores();
+    // 初回マウント時に店舗一覧を取得（初期化のため必要）
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchStores();
   }, [fetchStores]);
 
   useEffect(() => {
     if (selectedStoreId) {
-      fetchData();
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      void fetchData();
     }
   }, [selectedStoreId, date, fetchData]);
 

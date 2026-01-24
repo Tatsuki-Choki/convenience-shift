@@ -119,7 +119,7 @@ export function TimeOffContent({ user }: TimeOffContentProps) {
   const fetchRequests = useCallback(async () => {
     setLoading(true);
     try {
-      let url = '/api/time-off-requests?';
+      const url = '/api/time-off-requests?';
       const params = new URLSearchParams();
       if (isAdmin && selectedStoreId) {
         params.append('storeId', selectedStoreId);
