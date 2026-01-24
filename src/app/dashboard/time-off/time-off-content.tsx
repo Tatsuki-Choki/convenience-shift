@@ -39,7 +39,6 @@ import {
   ChevronLeft,
   ChevronRight,
   CalendarOff,
-  Clock,
   CheckCircle,
   XCircle,
   X,
@@ -59,6 +58,7 @@ interface TimeOffRequest {
   createdAt: string;
   staffName: string | null;
   staffStoreId: number | null;
+  reason?: string | null;
 }
 
 interface TimeOffContentProps {
@@ -83,6 +83,7 @@ export function TimeOffContent({ user }: TimeOffContentProps) {
   const [submitting, setSubmitting] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [bulkProcessing, setBulkProcessing] = useState(false);
+  const [requestReason, setRequestReason] = useState('');
 
   const isAdmin = user.role === 'owner' || user.role === 'manager';
 
@@ -196,10 +197,11 @@ export function TimeOffContent({ user }: TimeOffContentProps) {
       const res = await fetch('/api/time-off-requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dates: Array.from(selectedDates) }),
+        body: JSON.stringify({ dates: Array.from(selectedDates), reason: requestReason.trim() || null }),
       });
       if (res.ok) {
         setSelectedDates(new Set());
+        setRequestReason('');
         await fetchRequests();
       } else {
         const error = await res.json();
@@ -211,13 +213,59 @@ export function TimeOffContent({ user }: TimeOffContentProps) {
     } finally {
       setSubmitting(false);
     }
-  }, [selectedDates, fetchRequests]);
+  }, [selectedDates, requestReason, fetchRequests]);
 
   const pendingCount = requests.filter((r) => r.status === 'pending').length;
   const pendingRequests = useMemo(
     () => requests.filter((r) => r.status === 'pending'),
     [requests]
   );
+  const pendingGrouped = useMemo(() => {
+    const map = new Map<number, {
+      staffId: number;
+      staffName: string;
+      dates: string[];
+      createdAtList: string[];
+      reasons: Set<string>;
+      requestIds: number[];
+    }>();
+
+    pendingRequests.forEach((request) => {
+      const staffId = request.staffId;
+      const staffName = request.staffName || '不明';
+      if (!map.has(staffId)) {
+        map.set(staffId, {
+          staffId,
+          staffName,
+          dates: [],
+          createdAtList: [],
+          reasons: new Set(),
+          requestIds: [],
+        });
+      }
+      const group = map.get(staffId)!;
+      group.dates.push(request.date);
+      group.createdAtList.push(request.createdAt);
+      if (request.reason) {
+        group.reasons.add(request.reason);
+      }
+      group.requestIds.push(request.id);
+    });
+
+    return Array.from(map.values()).map((group) => {
+      const latestCreatedAt = group.createdAtList
+        .slice()
+        .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
+      return {
+        staffId: group.staffId,
+        staffName: group.staffName,
+        dates: group.dates.slice().sort(),
+        createdAt: latestCreatedAt,
+        reason: group.reasons.size > 0 ? Array.from(group.reasons).join(' / ') : '未入力',
+        requestIds: group.requestIds,
+      };
+    });
+  }, [pendingRequests]);
 
   const handleDeleteRequest = useCallback(
     async (requestId: number) => {
@@ -303,6 +351,36 @@ export function TimeOffContent({ user }: TimeOffContentProps) {
     }
   }, [pendingRequests, bulkProcessing, fetchRequests]);
 
+  const handleGroupUpdate = useCallback(async (requestIds: number[], status: 'approved' | 'rejected') => {
+    if (requestIds.length === 0 || bulkProcessing) return;
+    const label = status === 'approved' ? '承認' : '却下';
+    if (!confirm(`${requestIds.length}件の休み希望を${label}します。よろしいですか？`)) return;
+
+    setBulkProcessing(true);
+    try {
+      const responses = await Promise.all(
+        requestIds.map((requestId) =>
+          fetch(`/api/time-off-requests/${requestId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status }),
+          })
+        )
+      );
+
+      const failed = responses.filter((res) => !res.ok);
+      if (failed.length > 0) {
+        alert(`一部の${label}に失敗しました（${failed.length}件）`);
+      }
+      await fetchRequests();
+    } catch (error) {
+      console.error('グループ更新エラー:', error);
+      alert('更新に失敗しました');
+    } finally {
+      setBulkProcessing(false);
+    }
+  }, [bulkProcessing, fetchRequests]);
+
   const handlePrevMonth = useCallback(() => setCurrentMonth((m) => subMonths(m, 1)), []);
   const handleNextMonth = useCallback(() => setCurrentMonth((m) => addMonths(m, 1)), []);
 
@@ -384,18 +462,66 @@ export function TimeOffContent({ user }: TimeOffContentProps) {
               ) : pendingRequests.length === 0 ? (
                 <EmptyState message="承認待ちの休み希望はありません" />
               ) : (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>スタッフ</TableHead>
-                        <TableHead>日付</TableHead>
-                        <TableHead>申請日</TableHead>
-                        <TableHead className="text-right">操作</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {pendingRequests.map((request) => (
+                <>
+                  <div className="space-y-3 sm:hidden">
+                    {pendingGrouped.map((group) => (
+                      <div key={group.staffId} className="rounded-xl border border-[#E5E5EA] bg-white p-4">
+                        <div className="flex items-center justify-between">
+                          <p className="text-base font-semibold text-[#1D1D1F]">{group.staffName}</p>
+                          <span className="text-xs text-[#86868B]">
+                            申請日 {group.createdAt ? format(new Date(group.createdAt), 'M/d HH:mm') : '--/-- --:--'}
+                          </span>
+                        </div>
+                        <div className="mt-3">
+                          <p className="text-xs font-medium text-[#86868B]">希望日</p>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {group.dates.map((date) => (
+                              <span key={date} className="rounded-full bg-[#F5F5F7] px-2 py-1 text-xs text-[#1D1D1F]">
+                                {format(parseISO(date), 'M/d (E)', { locale: ja })}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="mt-3">
+                          <p className="text-xs font-medium text-[#86868B]">理由</p>
+                          <p className="mt-1 text-sm text-[#1D1D1F]">{group.reason}</p>
+                        </div>
+                        <div className="mt-4 grid grid-cols-2 gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => handleGroupUpdate(group.requestIds, 'approved')}
+                            disabled={bulkProcessing}
+                            className="bg-[#34C759] hover:bg-[#30D158] text-white"
+                          >
+                            <CheckCircle className="w-4 h-4 mr-1" />
+                            承認
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => handleGroupUpdate(group.requestIds, 'rejected')}
+                            disabled={bulkProcessing}
+                            className="bg-[#FF3B30] hover:bg-[#FF453A]"
+                          >
+                            <XCircle className="w-4 h-4 mr-1" />
+                            却下
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="hidden sm:block overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>スタッフ</TableHead>
+                          <TableHead>日付</TableHead>
+                          <TableHead>申請日</TableHead>
+                          <TableHead className="text-right">操作</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {pendingRequests.map((request) => (
                           <TableRow key={request.id}>
                             <TableCell className="font-medium">{request.staffName}</TableCell>
                             <TableCell>
@@ -429,9 +555,10 @@ export function TimeOffContent({ user }: TimeOffContentProps) {
                             </TableCell>
                           </TableRow>
                         ))}
-                    </TableBody>
-                  </Table>
-                </div>
+                      </TableBody>
+                    </Table>
+                  </div>
+                </>
               )}
             </PageSection>
           </TabsContent>
@@ -497,6 +624,8 @@ export function TimeOffContent({ user }: TimeOffContentProps) {
               selectedDates={selectedDates}
               loading={loading}
               submitting={submitting}
+              requestReason={requestReason}
+              onReasonChange={setRequestReason}
               onPrevMonth={handlePrevMonth}
               onNextMonth={handleNextMonth}
               onToggleDate={toggleDateSelection}
@@ -514,6 +643,8 @@ export function TimeOffContent({ user }: TimeOffContentProps) {
           selectedDates={selectedDates}
           loading={loading}
           submitting={submitting}
+          requestReason={requestReason}
+          onReasonChange={setRequestReason}
           onPrevMonth={handlePrevMonth}
           onNextMonth={handleNextMonth}
           onToggleDate={toggleDateSelection}
@@ -561,6 +692,8 @@ interface StaffRequestViewProps {
   selectedDates: Set<string>;
   loading: boolean;
   submitting: boolean;
+  requestReason: string;
+  onReasonChange: (value: string) => void;
   onPrevMonth: () => void;
   onNextMonth: () => void;
   onToggleDate: (date: Date) => void;
@@ -576,6 +709,8 @@ const StaffRequestView = memo(function StaffRequestView({
   selectedDates,
   loading,
   submitting,
+  requestReason,
+  onReasonChange,
   onPrevMonth,
   onNextMonth,
   onToggleDate,
@@ -619,14 +754,14 @@ const StaffRequestView = memo(function StaffRequestView({
           {loading ? (
             <div className="grid grid-cols-7 gap-2">
               {[...Array(35)].map((_, i) => (
-                <div key={i} className="h-16 bg-[#F5F5F7] rounded-xl animate-pulse" />
+                <div key={i} className="h-12 sm:h-16 bg-[#F5F5F7] rounded-xl animate-pulse" />
               ))}
             </div>
           ) : (
             <div className="grid grid-cols-7 gap-1">
               {calendarDays.map((day, index) => {
                 if (!day) {
-                  return <div key={`empty-${index}`} className="h-16" />;
+                  return <div key={`empty-${index}`} className="h-12 sm:h-16" />;
                 }
 
                 const dayOfWeek = getDay(day);
@@ -640,7 +775,7 @@ const StaffRequestView = memo(function StaffRequestView({
                   <div
                     key={day.toISOString()}
                     onClick={() => isSelectable && onToggleDate(day)}
-                    className={`h-16 p-2 border rounded-xl transition-all ${
+                    className={`h-12 sm:h-16 p-2 border rounded-xl transition-all ${
                       isToday(day) ? 'border-[#007AFF]' : 'border-[#E5E5EA]'
                     } ${!isSameMonth(day, currentMonth) ? 'opacity-50' : ''} ${
                       isSelectable ? 'cursor-pointer hover:border-[#007AFF] hover:shadow-sm' : ''
@@ -730,6 +865,16 @@ const StaffRequestView = memo(function StaffRequestView({
                 ))}
             </div>
           )}
+          <div className="mb-4">
+            <label className="text-sm font-medium text-[#1D1D1F]">理由（任意）</label>
+            <textarea
+              value={requestReason}
+              onChange={(event) => onReasonChange(event.target.value)}
+              rows={3}
+              className="mt-2 w-full rounded-xl border border-[#E5E5EA] bg-white p-3 text-sm text-[#1D1D1F] placeholder:text-[#86868B] focus:border-[#007AFF] focus:outline-none"
+              placeholder="例：私用のためお休み希望です"
+            />
+          </div>
           <Button
             onClick={onSubmit}
             disabled={selectedDates.size === 0 || submitting}

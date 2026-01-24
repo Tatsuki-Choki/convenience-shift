@@ -2,6 +2,7 @@
 
 import { memo, Suspense } from 'react';
 import { Sidebar } from './sidebar';
+import { BottomNavigation } from './bottom-navigation';
 import type { SessionUser } from '@/lib/auth';
 
 interface DashboardLayoutProps {
@@ -42,7 +43,7 @@ export const DashboardLayout = memo(function DashboardLayout({
         {/* モバイル用スペーサー */}
         <div className="h-14 lg:hidden" />
 
-        <div className="p-4 sm:p-6 lg:p-8">
+        <div className="p-4 pb-20 sm:p-6 sm:pb-20 lg:p-8 lg:pb-8">
           {/* ページヘッダー */}
           {(title || actions) && (
             <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -72,6 +73,8 @@ export const DashboardLayout = memo(function DashboardLayout({
           </Suspense>
         </div>
       </main>
+
+      <BottomNavigation user={user} />
     </div>
   );
 });

@@ -5,6 +5,7 @@ import { DashboardLayout, PageSection } from '@/components/layout/dashboard-layo
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
   format,
   startOfMonth,
@@ -84,6 +85,16 @@ function formatMinutes(minutes: number): string {
   return `${hours}時間${mins > 0 ? `${mins}分` : ''}`;
 }
 
+function formatShortHour(time: string): string {
+  const hour = parseInt(time.substring(0, 2), 10);
+  if (Number.isNaN(hour)) return time.substring(0, 2);
+  return `${hour}`;
+}
+
+function formatShortRange(start: string, end: string): string {
+  return `${formatShortHour(start)}-${formatShortHour(end)}`;
+}
+
 const StatCard = memo(function StatCard({
   icon: Icon,
   label,
@@ -122,7 +133,7 @@ const CalendarDayCell = memo(function CalendarDayCell({
   timeOff?: TimeOffRequest;
 }) {
   if (!day) {
-    return <div className="h-24" />;
+    return <div className="h-14 sm:h-20 lg:h-24" />;
   }
 
   const dayOfWeek = getDay(day);
@@ -130,7 +141,7 @@ const CalendarDayCell = memo(function CalendarDayCell({
 
   return (
     <div
-      className={`h-24 p-2 border rounded-xl transition-all ${
+      className={`h-14 sm:h-20 lg:h-24 p-2 border rounded-xl transition-all ${
         isTodayDate
           ? 'border-[#007AFF] bg-[#007AFF]/5 shadow-sm'
           : 'border-[#E5E5EA] hover:border-[#D2D2D7]'
@@ -151,7 +162,10 @@ const CalendarDayCell = memo(function CalendarDayCell({
       </div>
       {shift && (
         <div className="mt-1 p-1.5 bg-gradient-to-br from-[#007AFF] to-[#5856D6] text-white rounded-lg text-xs">
-          <div className="font-medium">
+          <div className="font-medium sm:hidden">
+            {formatShortRange(shift.startTime, shift.endTime)}
+          </div>
+          <div className="hidden sm:block font-medium">
             {shift.startTime.slice(0, 5)}-{shift.endTime.slice(0, 5)}
           </div>
           {shift.isHelpFromOtherStore && (
@@ -218,7 +232,10 @@ const WeekDayRow = memo(function WeekDayRow({
         {shift ? (
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <span className="text-lg font-semibold text-[#1D1D1F]">
+              <span className="text-lg font-semibold text-[#1D1D1F] sm:hidden">
+                {formatShortRange(shift.startTime, shift.endTime)}
+              </span>
+              <span className="hidden sm:block text-lg font-semibold text-[#1D1D1F]">
                 {shift.startTime.slice(0, 5)} - {shift.endTime.slice(0, 5)}
               </span>
               {shift.isHelpFromOtherStore && (
@@ -258,7 +275,7 @@ const LoadingSkeleton = memo(function LoadingSkeleton() {
   return (
     <div className="grid grid-cols-7 gap-2">
       {[...Array(35)].map((_, i) => (
-        <div key={i} className="h-24 bg-[#F5F5F7] rounded-xl animate-pulse" />
+        <div key={i} className="h-14 sm:h-20 lg:h-24 bg-[#F5F5F7] rounded-xl animate-pulse" />
       ))}
     </div>
   );
@@ -267,6 +284,9 @@ const LoadingSkeleton = memo(function LoadingSkeleton() {
 export function MyShiftsContent({ user }: MyShiftsContentProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [currentWeek, setCurrentWeek] = useState(new Date());
+  const [shiftSheetOpen, setShiftSheetOpen] = useState(false);
+  const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
+  const [selectedShiftDate, setSelectedShiftDate] = useState<Date | null>(null);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [timeOffRequests, setTimeOffRequests] = useState<TimeOffRequest[]>([]);
   const [staffInfo, setStaffInfo] = useState<StaffInfo | null>(null);
@@ -340,7 +360,24 @@ export function MyShiftsContent({ user }: MyShiftsContentProps) {
   const handlePrevWeek = useCallback(() => setCurrentWeek((w) => subWeeks(w, 1)), []);
   const handleNextWeek = useCallback(() => setCurrentWeek((w) => addWeeks(w, 1)), []);
 
+  const handleOpenShiftSheet = useCallback((day: Date) => {
+    const shift = getShiftForDate(day);
+    if (!shift) return;
+    setSelectedShift(shift);
+    setSelectedShiftDate(day);
+    setShiftSheetOpen(true);
+  }, [getShiftForDate]);
+
+  const handleShiftSheetChange = useCallback((open: boolean) => {
+    setShiftSheetOpen(open);
+    if (!open) {
+      setSelectedShift(null);
+      setSelectedShiftDate(null);
+    }
+  }, []);
+
   return (
+    <>
     <DashboardLayout
       user={user}
       title="マイシフト"
@@ -431,17 +468,60 @@ export function MyShiftsContent({ user }: MyShiftsContentProps) {
             {loading ? (
               <LoadingSkeleton />
             ) : (
-              <div className="grid grid-cols-7 gap-2">
-                {calendarDays.map((day, index) => (
-                  <CalendarDayCell
-                    key={day ? day.toISOString() : `empty-${index}`}
-                    day={day}
-                    currentMonth={currentMonth}
-                    shift={day ? getShiftForDate(day) : undefined}
-                    timeOff={day ? getTimeOffForDate(day) : undefined}
-                  />
-                ))}
-              </div>
+              <>
+                <div className="grid grid-cols-7 gap-2 sm:hidden">
+                  {calendarDays.map((day, index) => {
+                    if (!day) {
+                      return <div key={`empty-${index}`} className="h-14" />;
+                    }
+                    const dayOfWeek = getDay(day);
+                    const isTodayDate = isToday(day);
+                    const isInMonth = isSameMonth(day, currentMonth);
+                    const shift = getShiftForDate(day);
+                    return (
+                      <button
+                        key={day.toISOString()}
+                        type="button"
+                        onClick={() => shift && handleOpenShiftSheet(day)}
+                        disabled={!shift}
+                        className={`h-14 rounded-xl border p-2 text-left transition-all ${
+                          isTodayDate
+                            ? 'border-[#007AFF] bg-[#007AFF]/5 shadow-sm'
+                            : 'border-[#E5E5EA] bg-white'
+                        } ${!isInMonth ? 'opacity-50' : ''} ${
+                          shift ? 'cursor-pointer' : 'cursor-default'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between">
+                          <span
+                            className={`text-sm font-medium ${
+                              dayOfWeek === 0
+                                ? 'text-[#FF3B30]'
+                                : dayOfWeek === 6
+                                ? 'text-[#007AFF]'
+                                : 'text-[#1D1D1F]'
+                            }`}
+                          >
+                            {format(day, 'd')}
+                          </span>
+                          {shift && <span className="h-2 w-2 rounded-full bg-[#007AFF]" />}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="hidden sm:grid grid-cols-7 gap-2">
+                  {calendarDays.map((day, index) => (
+                    <CalendarDayCell
+                      key={day ? day.toISOString() : `empty-${index}`}
+                      day={day}
+                      currentMonth={currentMonth}
+                      shift={day ? getShiftForDate(day) : undefined}
+                      timeOff={day ? getTimeOffForDate(day) : undefined}
+                    />
+                  ))}
+                </div>
+              </>
             )}
 
             {/* 凡例 */}
@@ -579,7 +659,10 @@ export function MyShiftsContent({ user }: MyShiftsContentProps) {
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className="text-lg font-semibold text-[#1D1D1F]">
+                            <span className="text-lg font-semibold text-[#1D1D1F] sm:hidden">
+                              {formatShortRange(shift.startTime, shift.endTime)}
+                            </span>
+                            <span className="hidden sm:block text-lg font-semibold text-[#1D1D1F]">
                               {shift.startTime.slice(0, 5)} - {shift.endTime.slice(0, 5)}
                             </span>
                             {shift.isHelpFromOtherStore && (
@@ -604,5 +687,30 @@ export function MyShiftsContent({ user }: MyShiftsContentProps) {
         </TabsContent>
       </Tabs>
     </DashboardLayout>
+    <Dialog open={shiftSheetOpen} onOpenChange={handleShiftSheetChange}>
+      <DialogContent
+        className="sm:hidden bottom-0 top-auto left-0 right-0 translate-x-0 translate-y-0 rounded-t-2xl border-[#E5E5EA] p-4 pb-safe max-w-none"
+      >
+        <DialogHeader className="text-left">
+          <DialogTitle>シフト詳細</DialogTitle>
+          <DialogDescription>
+            {selectedShiftDate
+              ? format(selectedShiftDate, 'M月d日 (E)', { locale: ja })
+              : ''}
+          </DialogDescription>
+        </DialogHeader>
+        {selectedShift ? (
+          <div className="mt-2 rounded-xl border border-[#E5E5EA] bg-white p-4 text-center">
+            <p className="text-sm text-[#86868B]">勤務時間</p>
+            <p className="mt-2 text-xl font-semibold text-[#1D1D1F]">
+              {selectedShift.startTime.slice(0, 5)} - {selectedShift.endTime.slice(0, 5)}
+            </p>
+          </div>
+        ) : (
+          <p className="text-sm text-[#86868B]">シフトはありません</p>
+        )}
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

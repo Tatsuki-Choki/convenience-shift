@@ -54,17 +54,17 @@ export const DateNavigation = memo(function DateNavigation({
 
   return (
     <PageSection className="mb-6">
-      <div className="flex items-center justify-center gap-6">
+      <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-center sm:gap-6">
         <Button
           variant="outline"
           onClick={handlePrevDay}
-          className="rounded-xl border-[#E5E5EA] hover:bg-[#F5F5F7]"
+          className="w-full sm:w-auto rounded-xl border-[#E5E5EA] hover:bg-[#F5F5F7]"
         >
           <ChevronLeft className="w-4 h-4 mr-1" />
           前日
         </Button>
-        <div className="flex items-center gap-4">
-          <h2 className="text-xl font-semibold text-[#1D1D1F]">
+        <div className="flex flex-col items-center gap-3">
+          <h2 className="text-2xl sm:text-xl font-semibold text-[#1D1D1F] text-center">
             {format(currentDate, 'yyyy年M月d日', { locale: ja })}
             <span
               className={`ml-2 ${dayOfWeek === 0
@@ -77,7 +77,7 @@ export const DateNavigation = memo(function DateNavigation({
               ({dayOfWeekLabels[dayOfWeek]})
             </span>
           </h2>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-center gap-2">
             <AutoAssignButton
               onAutoAssign={onAutoAssign}
               onOpenSettings={onOpenSettings}
@@ -98,7 +98,7 @@ export const DateNavigation = memo(function DateNavigation({
         <Button
           variant="outline"
           onClick={handleNextDay}
-          className="rounded-xl border-[#E5E5EA] hover:bg-[#F5F5F7]"
+          className="w-full sm:w-auto rounded-xl border-[#E5E5EA] hover:bg-[#F5F5F7]"
         >
           翌日
           <ChevronRight className="w-4 h-4 ml-1" />

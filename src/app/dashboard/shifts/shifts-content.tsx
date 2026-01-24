@@ -70,7 +70,7 @@ const LoadingSkeleton = memo(function LoadingSkeleton() {
   return (
     <div className="grid grid-cols-7 gap-1 animate-pulse">
       {[...Array(35)].map((_, i) => (
-        <div key={i} className="h-24 bg-[#E5E5EA] rounded-xl" />
+        <div key={i} className="h-16 sm:h-20 lg:h-24 bg-[#E5E5EA] rounded-xl" />
       ))}
     </div>
   );
@@ -144,7 +144,7 @@ const CalendarDayCell = memo(function CalendarDayCell({
   return (
     <div
       onClick={onClick}
-      className={`h-24 p-2 border rounded-xl cursor-pointer transition-all duration-200 hover:shadow-md ${
+      className={`h-16 sm:h-20 lg:h-24 p-2 border rounded-xl cursor-pointer transition-all duration-200 hover:shadow-md ${
         isTodayDate
           ? 'border-[#007AFF] bg-[#007AFF]/5'
           : 'border-[#E5E5EA] hover:border-[#007AFF] bg-white'
@@ -169,7 +169,8 @@ const CalendarDayCell = memo(function CalendarDayCell({
       <div className="mt-2">
         {shiftCount > 0 ? (
           <Badge variant="outline" className={`text-xs ${badgeColors[status]}`}>
-            {shiftCount}名 / {requiredCount}名
+            <span className="sm:hidden">{shiftCount}/{requiredCount}</span>
+            <span className="hidden sm:inline">{shiftCount}名/{requiredCount}名</span>
           </Badge>
         ) : requiredCount > 0 ? (
           <Badge variant="outline" className="text-xs border-[#E5E5EA] text-[#D2D2D7] bg-[#F5F5F7]">
@@ -397,11 +398,11 @@ export function ShiftsContent({ user }: ShiftsContentProps) {
           <div className="grid grid-cols-7 gap-1">
             {calendarDays.map((day, index) => {
               if (!day) {
-                return <div key={`empty-${index}`} className="h-24" />;
+                return <div key={`empty-${index}`} className="h-16 sm:h-20 lg:h-24" />;
               }
 
               if (!isSameMonth(day, currentMonth)) {
-                return <div key={day.toISOString()} className="h-24 opacity-30" />;
+                return <div key={day.toISOString()} className="h-16 sm:h-20 lg:h-24 opacity-30" />;
               }
 
               return (
@@ -435,7 +436,7 @@ export function ShiftsContent({ user }: ShiftsContentProps) {
       </PageSection>
 
       {/* 月間統計 */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+      <div className="hidden sm:grid grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
         <StatCard
           icon={Calendar}
           label="総シフト数"

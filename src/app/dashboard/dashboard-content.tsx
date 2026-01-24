@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, memo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { DashboardLayout, PageSection, PageGrid } from '@/components/layout/dashboard-layout';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -21,7 +21,6 @@ import {
   ClipboardList,
   CalendarDays,
   CalendarOff,
-  TrendingUp,
   Clock,
   ArrowRight,
 } from 'lucide-react';
@@ -71,13 +70,13 @@ const QuickActionCard = memo(function QuickActionCard({
 
   return (
     <Card
-      className="group border-0 shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer bg-white hover:bg-[#FAFAFA] overflow-hidden"
+      className="group border border-[#E5E5EA] shadow-sm hover:bg-[#F5F5F7] transition-colors duration-200 cursor-pointer bg-white overflow-hidden"
       onClick={() => router.push(href)}
     >
-      <CardHeader className="pb-2">
+      <CardHeader className="pb-4">
         <div className="flex items-start justify-between">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#007AFF]/10 to-[#5856D6]/10 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-300">
-            <Icon className="w-6 h-6 text-[#007AFF]" />
+          <div className="w-12 h-12 rounded-2xl bg-[#F5F5F7] flex items-center justify-center mb-3">
+            <Icon className="w-6 h-6 text-[#86868B]" />
           </div>
           {badge && (
             <Badge
@@ -95,12 +94,6 @@ const QuickActionCard = memo(function QuickActionCard({
           {description}
         </CardDescription>
       </CardHeader>
-      <CardContent className="pt-0">
-        <div className="flex items-center text-[#007AFF] text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-          開く
-          <ArrowRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" />
-        </div>
-      </CardContent>
     </Card>
   );
 });
@@ -147,7 +140,7 @@ const WeekDayCell = memo(function WeekDayCell({
       </div>
 
       {shift ? (
-        <div className="bg-gradient-to-br from-[#007AFF] to-[#5856D6] text-white rounded-lg p-2 text-center">
+        <div className="bg-[#007AFF] text-white rounded-lg p-2 text-center">
           <p className="text-xs font-medium">{shift.startTime.slice(0, 5)}</p>
           <p className="text-[10px] opacity-70">〜</p>
           <p className="text-xs font-medium">{shift.endTime.slice(0, 5)}</p>
@@ -269,10 +262,10 @@ export function DashboardContent({ user }: DashboardContentProps) {
     >
       {/* 統計カード */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <PageSection className="!p-4">
+        <PageSection className="!p-3 sm:!p-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#007AFF]/10 flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-[#007AFF]" />
+            <div className="w-10 h-10 rounded-xl bg-[#F5F5F7] flex items-center justify-center">
+              <Calendar className="w-5 h-5 text-[#86868B]" />
             </div>
             <div>
               <p className="text-2xl font-bold text-[#1D1D1F]">{weeklyStats.shiftCount}</p>
@@ -281,10 +274,10 @@ export function DashboardContent({ user }: DashboardContentProps) {
           </div>
         </PageSection>
 
-        <PageSection className="!p-4">
+        <PageSection className="!p-3 sm:!p-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#34C759]/10 flex items-center justify-center">
-              <Clock className="w-5 h-5 text-[#34C759]" />
+            <div className="w-10 h-10 rounded-xl bg-[#F5F5F7] flex items-center justify-center">
+              <Clock className="w-5 h-5 text-[#86868B]" />
             </div>
             <div>
               <p className="text-2xl font-bold text-[#1D1D1F]">{weeklyStats.totalTime || '0時間'}</p>
@@ -293,10 +286,10 @@ export function DashboardContent({ user }: DashboardContentProps) {
           </div>
         </PageSection>
 
-        <PageSection className="!p-4">
+        <PageSection className="!p-3 sm:!p-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#FF9500]/10 flex items-center justify-center">
-              <CalendarOff className="w-5 h-5 text-[#FF9500]" />
+            <div className="w-10 h-10 rounded-xl bg-[#F5F5F7] flex items-center justify-center">
+              <CalendarOff className="w-5 h-5 text-[#86868B]" />
             </div>
             <div>
               <p className="text-2xl font-bold text-[#1D1D1F]">
@@ -307,10 +300,10 @@ export function DashboardContent({ user }: DashboardContentProps) {
           </div>
         </PageSection>
 
-        <PageSection className="!p-4">
+        <PageSection className="!p-3 sm:!p-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#5856D6]/10 flex items-center justify-center">
-              <CalendarDays className="w-5 h-5 text-[#5856D6]" />
+            <div className="w-10 h-10 rounded-xl bg-[#F5F5F7] flex items-center justify-center">
+              <CalendarDays className="w-5 h-5 text-[#86868B]" />
             </div>
             <div>
               <p className="text-2xl font-bold text-[#1D1D1F]">
@@ -396,22 +389,84 @@ export function DashboardContent({ user }: DashboardContentProps) {
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-7 gap-2">
-            {weekDays.map((day) => (
-              <WeekDayCell
-                key={day.toISOString()}
-                day={day}
-                shift={getShiftForDate(day)}
-                timeOff={getTimeOffForDate(day)}
-              />
-            ))}
-          </div>
+          <>
+            <div className="sm:hidden space-y-2">
+              {weekDays.map((day) => {
+                const shift = getShiftForDate(day);
+                const timeOff = getTimeOffForDate(day);
+                const dayOfWeek = getDay(day);
+                const isTodayDate = isToday(day);
+                return (
+                  <div
+                    key={day.toISOString()}
+                    className={`flex items-center justify-between rounded-xl border p-3 ${
+                      isTodayDate
+                        ? 'border-[#007AFF] bg-[#007AFF]/5 shadow-sm'
+                        : 'border-[#E5E5EA] bg-white'
+                    }`}
+                  >
+                    <div>
+                      <p
+                        className={`text-sm font-medium ${
+                          dayOfWeek === 0
+                            ? 'text-[#FF3B30]'
+                            : dayOfWeek === 6
+                            ? 'text-[#007AFF]'
+                            : 'text-[#1D1D1F]'
+                        }`}
+                      >
+                        {format(day, 'M/d (E)', { locale: ja })}
+                      </p>
+                      {shift ? (
+                        <div className="mt-1 flex items-center gap-2 text-sm text-[#1D1D1F]">
+                          <span>{shift.startTime.slice(0, 5)}-{shift.endTime.slice(0, 5)}</span>
+                          {shift.isHelpFromOtherStore && (
+                            <Badge className="bg-[#FF9500] text-white text-[10px] px-1.5">
+                              ヘルプ
+                            </Badge>
+                          )}
+                        </div>
+                      ) : timeOff ? (
+                        <span
+                          className={`mt-1 inline-flex rounded-lg px-2 py-1 text-xs font-medium ${
+                            timeOff.status === 'approved'
+                              ? 'bg-[#34C759]/10 text-[#34C759]'
+                              : timeOff.status === 'pending'
+                              ? 'bg-[#FF9500]/10 text-[#FF9500]'
+                              : 'bg-[#FF3B30]/10 text-[#FF3B30]'
+                          }`}
+                        >
+                          {timeOff.status === 'approved'
+                            ? '休み'
+                            : timeOff.status === 'pending'
+                            ? '申請中'
+                            : '却下'}
+                        </span>
+                      ) : (
+                        <span className="mt-1 text-sm text-[#D2D2D7]">—</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="hidden sm:grid grid-cols-7 gap-2">
+              {weekDays.map((day) => (
+                <WeekDayCell
+                  key={day.toISOString()}
+                  day={day}
+                  shift={getShiftForDate(day)}
+                  timeOff={getTimeOffForDate(day)}
+                />
+              ))}
+            </div>
+          </>
         )}
 
         {/* 凡例 */}
         <div className="flex flex-wrap items-center gap-4 sm:gap-6 mt-6 pt-4 border-t border-[#E5E5EA]">
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 bg-gradient-to-br from-[#007AFF] to-[#5856D6] rounded" />
+            <div className="w-4 h-4 bg-[#007AFF] rounded" />
             <span className="text-xs text-[#86868B]">シフト</span>
           </div>
           <div className="flex items-center gap-2">

@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useCallback, useMemo, useEffect } from 'react';
+import { memo, useCallback, useMemo, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -11,13 +11,10 @@ import {
   CalendarDays,
   CalendarOff,
   LogOut,
-  Menu,
-  X,
   ChevronRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { SessionUser } from '@/lib/auth';
-import { useState } from 'react';
 
 interface SidebarProps {
   user: SessionUser;
@@ -118,47 +115,8 @@ const NavLink = memo(function NavLink({
   );
 });
 
-const MobileNavLink = memo(function MobileNavLink({
-  item,
-  isActive,
-  onClick,
-}: {
-  item: NavItem;
-  isActive: boolean;
-  onClick: () => void;
-}) {
-  const Icon = item.icon;
-
-  return (
-    <Link
-      href={item.href}
-      prefetch={true}
-      onClick={onClick}
-      className={`
-        flex items-center gap-4 px-4 py-4 transition-all duration-200 border-b border-[#F5F5F7] last:border-b-0
-        ${isActive
-          ? 'bg-[#007AFF]/5 text-[#007AFF]'
-          : 'text-[#1D1D1F] active:bg-[#F5F5F7]'
-        }
-      `}
-    >
-      <Icon
-        className={`w-6 h-6 flex-shrink-0 ${
-          isActive ? 'text-[#007AFF]' : 'text-[#86868B]'
-        }`}
-      />
-      <div className="flex-1">
-        <p className="text-base font-medium">{item.label}</p>
-        <p className="text-xs text-[#86868B] mt-0.5">{item.description}</p>
-      </div>
-      <ChevronRight className={`w-5 h-5 ${isActive ? 'text-[#007AFF]' : 'text-[#D2D2D7]'}`} />
-    </Link>
-  );
-});
-
 export const Sidebar = memo(function Sidebar({ user }: SidebarProps) {
   const pathname = usePathname();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [jstNow, setJstNow] = useState<Date | null>(null);
 
   useEffect(() => {
@@ -201,10 +159,6 @@ export const Sidebar = memo(function Sidebar({ user }: SidebarProps) {
   const handleLogout = useCallback(async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
     window.location.href = '/';
-  }, []);
-
-  const closeMobileMenu = useCallback(() => {
-    setMobileMenuOpen(false);
   }, []);
 
   return (
@@ -264,89 +218,14 @@ export const Sidebar = memo(function Sidebar({ user }: SidebarProps) {
       </aside>
 
       {/* モバイルヘッダー */}
-      <header className="lg:hidden fixed top-0 left-0 right-0 h-14 bg-white/80 backdrop-blur-xl border-b border-[#E5E5EA] z-40 px-4 flex items-center justify-between">
+      <header className="lg:hidden fixed top-0 left-0 right-0 h-14 bg-white/80 backdrop-blur-xl border-b border-[#E5E5EA] z-40 px-4 flex items-center">
         <Link href="/dashboard" className="flex items-center gap-2">
           <div className="w-8 h-8 bg-gradient-to-br from-[#007AFF] to-[#5856D6] rounded-lg flex items-center justify-center">
             <Calendar className="w-5 h-5 text-white" />
           </div>
           <span className="text-base font-semibold text-[#1D1D1F]">シフト管理</span>
         </Link>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setMobileMenuOpen(true)}
-          className="p-2"
-        >
-          <Menu className="w-6 h-6 text-[#1D1D1F]" />
-        </Button>
       </header>
-
-      {/* モバイルメニューオーバーレイ */}
-      {mobileMenuOpen && (
-        <div
-          className="lg:hidden fixed inset-0 bg-black/20 backdrop-blur-sm z-50"
-          onClick={closeMobileMenu}
-        />
-      )}
-
-      {/* モバイルスライドメニュー */}
-      <div
-        className={`
-          lg:hidden fixed top-0 right-0 bottom-0 w-80 max-w-[85vw] bg-white z-50
-          transform transition-transform duration-300 ease-out
-          ${mobileMenuOpen ? 'translate-x-0' : 'translate-x-full'}
-        `}
-      >
-        {/* メニューヘッダー */}
-        <div className="h-14 flex items-center justify-between px-4 border-b border-[#E5E5EA]">
-          <span className="text-base font-semibold text-[#1D1D1F]">メニュー</span>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={closeMobileMenu}
-            className="p-2"
-          >
-            <X className="w-6 h-6 text-[#86868B]" />
-          </Button>
-        </div>
-
-        {/* ユーザー情報 */}
-        <div className="px-4 py-4 border-b border-[#E5E5EA] bg-[#F5F5F7]">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-gradient-to-br from-[#34C759] to-[#30D158] rounded-full flex items-center justify-center text-white font-medium">
-              {user.name.charAt(0)}
-            </div>
-            <div>
-              <p className="text-base font-medium text-[#1D1D1F]">{user.name}</p>
-              <p className="text-sm text-[#86868B]">{roleLabels[user.role]}</p>
-            </div>
-          </div>
-        </div>
-
-        {/* ナビゲーション */}
-        <nav className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 180px)' }}>
-          {filteredNavItems.map((item) => (
-            <MobileNavLink
-              key={item.href}
-              item={item}
-              isActive={isActiveLink(item.href)}
-              onClick={closeMobileMenu}
-            />
-          ))}
-        </nav>
-
-        {/* ログアウト */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-[#E5E5EA] bg-white">
-          <Button
-            variant="ghost"
-            onClick={handleLogout}
-            className="w-full justify-center gap-2 text-[#FF3B30] hover:bg-[#FF3B30]/5"
-          >
-            <LogOut className="w-5 h-5" />
-            ログアウト
-          </Button>
-        </div>
-      </div>
     </>
   );
 });

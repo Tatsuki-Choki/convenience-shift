@@ -41,6 +41,7 @@ import {
   LoadingSkeleton,
   ShiftLegend,
 } from './components';
+import { MobileShiftList } from './components/mobile-shift-list';
 
 const formatTime = (time: string) => {
   if (!time) return '09:00';
@@ -576,8 +577,16 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
           >
             <div className="flex flex-col gap-4 lg:flex-row">
               <div className="flex-1 min-w-0">
-                <div className="overflow-x-auto relative z-0">
-                  <table ref={tableRef} className="w-full min-w-[1200px] border-collapse">
+                <div className="sm:hidden">
+                  <MobileShiftList
+                    staffList={staffList}
+                    getShiftForStaff={getShiftForStaff}
+                    getStaffAvailability={getStaffAvailability}
+                    onEdit={handleOpenEditDialog}
+                  />
+                </div>
+                <div className="hidden sm:block overflow-x-auto relative z-0">
+                  <table ref={tableRef} className="w-full sm:min-w-[800px] lg:min-w-[1200px] border-collapse">
                     <thead>
                       <tr className="border-b border-[#E5E5EA]">
                         <th className="sticky left-0 bg-white p-1 text-left text-xs font-medium text-[#86868B] w-[150px] z-[20] border-r border-[#E5E5EA]">
@@ -718,7 +727,9 @@ export function DailyShiftContent({ user, date, initialStoreId }: DailyShiftCont
                   </table>
                 </div>
 
-                <ShiftLegend />
+                <div className="hidden sm:block">
+                  <ShiftLegend />
+                </div>
               </div>
 
               <aside className="w-full shrink-0 lg:w-auto lg:relative">
