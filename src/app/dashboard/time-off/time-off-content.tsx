@@ -699,7 +699,7 @@ export function TimeOffContent({ user }: TimeOffContentProps) {
                 variant="destructive"
                 className="w-full mt-2"
                 onClick={() => {
-                  onDelete(selectedRequest.id);
+                  handleDeleteRequest(selectedRequest.id);
                   setSelectedRequest(null);
                 }}
               >
