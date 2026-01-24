@@ -47,6 +47,7 @@ export const timeOffRequests = pgTable('time_off_requests', {
   staffId: integer('staff_id').references(() => staff.id, { onDelete: 'cascade' }).notNull(),
   date: date('date').notNull(),
   status: timeOffStatusEnum('status').default('pending').notNull(),
+  reason: text('reason'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (table) => [
   index('time_off_staff_idx').on(table.staffId),

@@ -84,6 +84,7 @@ export function TimeOffContent({ user }: TimeOffContentProps) {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [bulkProcessing, setBulkProcessing] = useState(false);
   const [requestReason, setRequestReason] = useState('');
+  const [selectedRequest, setSelectedRequest] = useState<TimeOffRequest | null>(null);
 
   const isAdmin = user.role === 'owner' || user.role === 'manager';
 
@@ -400,6 +401,7 @@ export function TimeOffContent({ user }: TimeOffContentProps) {
   );
 
   return (
+    <>
     <DashboardLayout
       user={user}
       title="休み希望"
@@ -626,6 +628,7 @@ export function TimeOffContent({ user }: TimeOffContentProps) {
               submitting={submitting}
               requestReason={requestReason}
               onReasonChange={setRequestReason}
+              onRequestSelect={setSelectedRequest}
               onPrevMonth={handlePrevMonth}
               onNextMonth={handleNextMonth}
               onToggleDate={toggleDateSelection}
@@ -645,6 +648,7 @@ export function TimeOffContent({ user }: TimeOffContentProps) {
           submitting={submitting}
           requestReason={requestReason}
           onReasonChange={setRequestReason}
+          onRequestSelect={setSelectedRequest}
           onPrevMonth={handlePrevMonth}
           onNextMonth={handleNextMonth}
           onToggleDate={toggleDateSelection}
@@ -654,6 +658,59 @@ export function TimeOffContent({ user }: TimeOffContentProps) {
         />
       )}
     </DashboardLayout>
+    {selectedRequest && (
+      <>
+        <div
+          className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm sm:hidden"
+          onClick={() => setSelectedRequest(null)}
+        />
+        <div className="fixed inset-x-0 bottom-0 z-50 rounded-t-2xl bg-white p-4 pb-safe shadow-lg sm:hidden">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-[#1D1D1F]">休み希望詳細</h3>
+            <button onClick={() => setSelectedRequest(null)} className="p-2">
+              <X className="w-5 h-5 text-[#86868B]" />
+            </button>
+          </div>
+          <div className="space-y-3">
+            <div>
+              <p className="text-xs text-[#86868B]">日付</p>
+              <p className="text-base font-medium text-[#1D1D1F]">
+                {format(parseISO(selectedRequest.date), 'M月d日 (E)', { locale: ja })}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-[#86868B]">ステータス</p>
+              <StatusBadge status={selectedRequest.status} />
+            </div>
+            {selectedRequest.reason && (
+              <div>
+                <p className="text-xs text-[#86868B]">理由</p>
+                <p className="text-sm text-[#1D1D1F]">{selectedRequest.reason}</p>
+              </div>
+            )}
+            <div>
+              <p className="text-xs text-[#86868B]">申請日</p>
+              <p className="text-sm text-[#1D1D1F]">
+                {format(new Date(selectedRequest.createdAt), 'M/d HH:mm')}
+              </p>
+            </div>
+            {selectedRequest.status === 'pending' && (
+              <Button
+                variant="destructive"
+                className="w-full mt-2"
+                onClick={() => {
+                  onDelete(selectedRequest.id);
+                  setSelectedRequest(null);
+                }}
+              >
+                申請を取り消す
+              </Button>
+            )}
+          </div>
+        </div>
+      </>
+    )}
+    </>
   );
 }
 
@@ -694,6 +751,7 @@ interface StaffRequestViewProps {
   submitting: boolean;
   requestReason: string;
   onReasonChange: (value: string) => void;
+  onRequestSelect: (request: TimeOffRequest) => void;
   onPrevMonth: () => void;
   onNextMonth: () => void;
   onToggleDate: (date: Date) => void;
@@ -711,6 +769,7 @@ const StaffRequestView = memo(function StaffRequestView({
   submitting,
   requestReason,
   onReasonChange,
+  onRequestSelect,
   onPrevMonth,
   onNextMonth,
   onToggleDate,
@@ -772,13 +831,22 @@ const StaffRequestView = memo(function StaffRequestView({
                 const isSelectable = !isPast && !request;
 
                 return (
-                  <div
+                  <button
                     key={day.toISOString()}
-                    onClick={() => isSelectable && onToggleDate(day)}
+                    type="button"
+                    onClick={() => {
+                      if (request) {
+                        onRequestSelect(request);
+                        return;
+                      }
+                      if (isSelectable) {
+                        onToggleDate(day);
+                      }
+                    }}
                     className={`h-12 sm:h-16 p-2 border rounded-xl transition-all ${
                       isToday(day) ? 'border-[#007AFF]' : 'border-[#E5E5EA]'
                     } ${!isSameMonth(day, currentMonth) ? 'opacity-50' : ''} ${
-                      isSelectable ? 'cursor-pointer hover:border-[#007AFF] hover:shadow-sm' : ''
+                      isSelectable || request ? 'cursor-pointer hover:border-[#007AFF] hover:shadow-sm' : ''
                     } ${isPast ? 'bg-[#F5F5F7]' : ''} ${
                       isSelected ? 'bg-[#007AFF]/10 border-[#007AFF]' : ''
                     } ${
@@ -790,7 +858,7 @@ const StaffRequestView = memo(function StaffRequestView({
                           : 'bg-[#FF9500]/5'
                         : ''
                     }`}
-                  >
+                    >
                     <span
                       className={`text-sm font-medium ${
                         dayOfWeek === 0
@@ -802,11 +870,26 @@ const StaffRequestView = memo(function StaffRequestView({
                     >
                       {format(day, 'd')}
                     </span>
-                    {request && <StatusBadge status={request.status} />}
+                    {request && (
+                      <div
+                        className={`w-2 h-2 rounded-full mt-1 sm:hidden ${
+                          request.status === 'approved'
+                            ? 'bg-[#34C759]'
+                            : request.status === 'rejected'
+                            ? 'bg-[#FF3B30]'
+                            : 'bg-[#FF9500]'
+                        }`}
+                      />
+                    )}
+                    {request && (
+                      <div className="hidden sm:block">
+                        <StatusBadge status={request.status} />
+                      </div>
+                    )}
                     {isSelected && !request && (
                       <div className="w-2 h-2 bg-[#007AFF] rounded-full mt-1" />
                     )}
-                  </div>
+                  </button>
                 );
               })}
             </div>

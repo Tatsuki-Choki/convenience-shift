@@ -83,8 +83,6 @@ export const BottomNavigation = memo(function BottomNavigation({ user }: { user:
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const isAdmin = user.role === 'owner' || user.role === 'manager';
-
   const filteredPrimaryItems = useMemo(
     () => primaryNavItems.filter((item) => item.roles.includes(user.role)),
     [user.role]
@@ -117,9 +115,7 @@ export const BottomNavigation = memo(function BottomNavigation({ user }: { user:
   return (
     <>
       <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 border-t border-[#E5E5EA] bg-white/80 backdrop-blur-xl pb-safe">
-        <nav
-          className={`grid ${isAdmin ? 'grid-cols-5' : 'grid-cols-4'} h-16 px-2`}
-        >
+        <nav className="grid grid-cols-5 h-16 px-2">
           {filteredPrimaryItems.map((item) => {
             const Icon = item.icon;
             const active = isActiveLink(item.href);
@@ -137,16 +133,14 @@ export const BottomNavigation = memo(function BottomNavigation({ user }: { user:
               </Link>
             );
           })}
-          {isAdmin && (
-            <button
-              type="button"
-              onClick={() => setMenuOpen(true)}
-              className="touch-target flex flex-col items-center justify-center gap-1 text-[10px] font-medium text-[#86868B]"
-            >
-              <Menu className="h-5 w-5" />
-              メニュー
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => setMenuOpen(true)}
+            className="touch-target flex flex-col items-center justify-center gap-1 text-[10px] font-medium text-[#86868B]"
+          >
+            <Menu className="h-5 w-5" />
+            メニュー
+          </button>
         </nav>
       </div>
 

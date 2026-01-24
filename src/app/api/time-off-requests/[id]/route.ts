@@ -26,6 +26,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         date: timeOffRequests.date,
         status: timeOffRequests.status,
         createdAt: timeOffRequests.createdAt,
+        reason: timeOffRequests.reason,
         staffName: staff.name,
         staffStoreId: staff.storeId,
       })
